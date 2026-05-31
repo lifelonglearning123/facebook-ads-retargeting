@@ -32,53 +32,90 @@ export default function ProvisionButton() {
         type="button"
         onClick={run}
         disabled={loading}
-        className="rounded-md bg-brand px-4 py-2 text-brand-fg disabled:opacity-50"
+        className="btn-primary text-sm"
       >
-        {loading ? "Provisioning..." : "Provision custom fields + tags in GHL"}
+        {loading ? "Setting up…" : "Set up GoHighLevel"}
       </button>
-      <p className="mt-1 text-xs text-neutral-500">
-        Idempotent — safe to run multiple times. Creates anything from the snapshot spec that isn&apos;t already in the location.
-      </p>
 
       {result && (
-        <div className={`mt-4 rounded-md border p-3 text-sm ${result.ok ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
-          {!result.ok && <p className="text-red-700">Error: {result.error}</p>}
+        <div
+          className="mt-4 rounded-xl border p-4 text-sm"
+          style={{
+            borderColor: result.ok
+              ? "rgb(var(--tag-picked-edge))"
+              : "rgb(var(--tag-stopped-edge))",
+            background: result.ok
+              ? "rgb(var(--tag-picked-bg) / 0.35)"
+              : "rgb(var(--tag-stopped-bg) / 0.35)",
+          }}
+        >
+          {!result.ok && (
+            <p className="text-[rgb(var(--tag-stopped-fg))]">
+              <strong>Setup error.</strong> {result.error}
+            </p>
+          )}
           {result.ok && (
-            <>
-              <p className="font-medium">Custom fields</p>
-              <ul className="mt-1 ml-5 list-disc text-neutral-700">
-                <li>Created: {result.fields?.created.length ?? 0} {result.fields?.created.length ? `(${result.fields?.created.join(", ")})` : ""}</li>
-                <li>Already existed: {result.fields?.existed.length ?? 0}</li>
-                {(result.fields?.failed.length ?? 0) > 0 && (
-                  <li className="text-red-700">
-                    Failed: {result.fields?.failed.length}
-                    <ul className="ml-5 list-disc">
-                      {result.fields?.failed.map((f) => (
-                        <li key={f.name}><b>{f.name}</b>: {f.error}</li>
-                      ))}
-                    </ul>
-                  </li>
-                )}
-              </ul>
-              <p className="mt-3 font-medium">Tags</p>
-              <ul className="mt-1 ml-5 list-disc text-neutral-700">
-                <li>Created: {result.tags?.created.length ?? 0} {result.tags?.created.length ? `(${result.tags?.created.join(", ")})` : ""}</li>
-                <li>Already existed: {result.tags?.existed.length ?? 0}</li>
-                {(result.tags?.failed.length ?? 0) > 0 && (
-                  <li className="text-red-700">
-                    Failed: {result.tags?.failed.length}
-                    <ul className="ml-5 list-disc">
-                      {result.tags?.failed.map((f) => (
-                        <li key={f.name}><b>{f.name}</b>: {f.error}</li>
-                      ))}
-                    </ul>
-                  </li>
-                )}
-              </ul>
-            </>
+            <div className="space-y-3">
+              <p className="text-[rgb(var(--tag-picked-fg))]">
+                <strong>All set.</strong> Here’s what we did:
+              </p>
+              <ResultRow
+                title="Custom fields"
+                created={result.fields?.created ?? []}
+                existed={result.fields?.existed.length ?? 0}
+                failed={result.fields?.failed ?? []}
+              />
+              <ResultRow
+                title="Tags"
+                created={result.tags?.created ?? []}
+                existed={result.tags?.existed.length ?? 0}
+                failed={result.tags?.failed ?? []}
+              />
+            </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ResultRow({
+  title,
+  created,
+  existed,
+  failed,
+}: {
+  title: string;
+  created: string[];
+  existed: number;
+  failed: { name: string; error: string }[];
+}) {
+  return (
+    <div>
+      <div className="eyebrow mb-1.5">{title}</div>
+      <ul className="space-y-0.5 text-[0.88rem] text-[rgb(var(--ink-2))]">
+        <li>
+          <strong className="text-[rgb(var(--ink))]">{created.length}</strong> newly created
+          {created.length > 0 && (
+            <span className="text-[rgb(var(--ink-3))]"> — {created.join(", ")}</span>
+          )}
+        </li>
+        <li>
+          <strong className="text-[rgb(var(--ink))]">{existed}</strong> already existed
+        </li>
+        {failed.length > 0 && (
+          <li className="text-[rgb(var(--tag-stopped-fg))]">
+            <strong>{failed.length}</strong> couldn’t be created
+            <ul className="ml-4 mt-1 list-disc">
+              {failed.map((f) => (
+                <li key={f.name}>
+                  <strong>{f.name}</strong>: {f.error}
+                </li>
+              ))}
+            </ul>
+          </li>
+        )}
+      </ul>
     </div>
   );
 }

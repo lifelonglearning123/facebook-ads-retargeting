@@ -2,6 +2,190 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+   Editorial Operations Console
+   - Warm cream surfaces, deep ink text
+   - Fraunces for display, Geist Sans for body, JetBrains Mono for technical
+   - Status tags styled as printed labels
+   ========================================================================== */
+
 :root {
   color-scheme: light;
+
+  /* Surfaces */
+  --paper: 251 248 243;        /* main canvas, warm cream */
+  --paper-deep: 244 240 232;   /* secondary surface */
+  --paper-card: 255 254 251;   /* raised card */
+
+  /* Ink */
+  --ink: 24 23 28;             /* main text */
+  --ink-2: 70 67 78;            /* secondary text */
+  --ink-3: 124 119 132;        /* tertiary, hints */
+
+  /* Lines */
+  --line: 220 211 195;         /* hairline rule */
+  --line-strong: 188 175 152;
+
+  /* Status — calling now */
+  --tag-active-bg: 248 220 174;
+  --tag-active-fg: 130 76 14;
+  --tag-active-edge: 213 165 96;
+
+  /* Status — picked up (engaged) */
+  --tag-picked-bg: 209 226 195;
+  --tag-picked-fg: 47 88 38;
+  --tag-picked-edge: 124 165 96;
+
+  /* Status — waiting / about to call */
+  --tag-waiting-bg: 226 220 207;
+  --tag-waiting-fg: 80 70 50;
+  --tag-waiting-edge: 162 148 122;
+
+  /* Status — stopped / exhausted */
+  --tag-stopped-bg: 232 197 192;
+  --tag-stopped-fg: 122 36 30;
+  --tag-stopped-edge: 188 116 108;
+
+  /* Default brand (overridden via inline style from env) */
+  --brand-rgb: 14 165 233;
+  --brand-fg-rgb: 255 255 255;
+}
+
+html, body {
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
+}
+
+body {
+  font-feature-settings: "ss01", "cv11", "calt";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =============================================================================
+   Hairline divider — used as <hr> or border
+   ========================================================================== */
+.hairline {
+  height: 1px;
+  width: 100%;
+  background: rgb(var(--line));
+}
+
+/* =============================================================================
+   Page reveal — gentle staggered fade as content loads
+   ========================================================================== */
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.reveal {
+  animation: reveal 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.reveal-d1 { animation-delay:  60ms; }
+.reveal-d2 { animation-delay: 120ms; }
+.reveal-d3 { animation-delay: 180ms; }
+.reveal-d4 { animation-delay: 240ms; }
+.reveal-d5 { animation-delay: 300ms; }
+
+/* =============================================================================
+   "Live" pulse for active call indicators
+   ========================================================================== */
+@keyframes livepulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.92); }
+}
+.live-dot {
+  animation: livepulse 1600ms ease-in-out infinite;
+}
+
+/* =============================================================================
+   Status tag — looks like a printed label
+   ========================================================================== */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.18rem 0.55rem 0.20rem;
+  border-radius: 999px;
+  font-family: var(--font-geist), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.tag-active  { background: rgb(var(--tag-active-bg));  color: rgb(var(--tag-active-fg));  border-color: rgb(var(--tag-active-edge)); }
+.tag-picked  { background: rgb(var(--tag-picked-bg));  color: rgb(var(--tag-picked-fg));  border-color: rgb(var(--tag-picked-edge)); }
+.tag-waiting { background: rgb(var(--tag-waiting-bg)); color: rgb(var(--tag-waiting-fg)); border-color: rgb(var(--tag-waiting-edge)); }
+.tag-stopped { background: rgb(var(--tag-stopped-bg)); color: rgb(var(--tag-stopped-fg)); border-color: rgb(var(--tag-stopped-edge)); }
+
+.tag .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* =============================================================================
+   Card — raised paper
+   ========================================================================== */
+.card {
+  background: rgb(var(--paper-card));
+  border: 1px solid rgb(var(--line));
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgb(var(--line) / 0.4), 0 6px 24px -16px rgb(24 23 28 / 0.08);
+}
+
+/* Form control base */
+.field {
+  background: rgb(var(--paper-card));
+  border: 1px solid rgb(var(--line));
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  color: rgb(var(--ink));
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.field:focus {
+  outline: none;
+  border-color: rgb(var(--ink-2));
+  box-shadow: 0 0 0 3px rgb(var(--ink) / 0.06);
+}
+
+/* Button base */
+.btn-primary {
+  background: rgb(var(--ink));
+  color: rgb(var(--paper));
+  padding: 0.65rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.btn-primary:hover:not(:disabled) { background: rgb(var(--ink-2)); }
+.btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: rgb(var(--ink));
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgb(var(--line-strong));
+  border-radius: 999px;
+  font-weight: 500;
+  transition: background 120ms ease;
+}
+.btn-ghost:hover:not(:disabled) { background: rgb(var(--paper-deep)); }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Eyebrow — small uppercase tracked label */
+.eyebrow {
+  font-family: var(--font-geist), system-ui, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--ink-3));
 }

@@ -12,10 +12,10 @@ type StepKind =
 
 interface UiStep {
   kind: StepKind;
-  amount: number;       // minutes, hours, or days depending on kind
-  atTime: string;       // HH:MM
-  randomFrom: string;   // HH:MM
-  randomTo: string;     // HH:MM
+  amount: number;
+  atTime: string;
+  randomFrom: string;
+  randomTo: string;
 }
 
 type JsonStep = Record<string, unknown>;
@@ -31,10 +31,10 @@ const DEFAULT_RANDOM_TO = "17:00";
 
 const KIND_LABELS: Record<StepKind, string> = {
   immediate: "Call straight away",
-  wait_minutes: "Wait X minutes, then call",
-  wait_hours: "Wait X hours, then call",
-  wait_days: "Wait X days, then call",
-  specific_day_time: "X days from now at a specific time",
+  wait_minutes: "Wait some minutes, then call",
+  wait_hours: "Wait some hours, then call",
+  wait_days: "Wait some days, then call",
+  specific_day_time: "On a specific day at a specific time",
   next_workday_at: "Next working day at a specific time",
   next_workday_random: "Next working day, random time in a window",
 };
@@ -49,7 +49,7 @@ const KIND_OPTIONS: StepKind[] = [
   "next_workday_random",
 ];
 
-// ─── Conversion: JSON ↔ UI ──────────────────────────────────────────────────
+// ─── Conversion: JSON ↔ UI ─────────────────────────────────────────────────
 
 function jsonToUi(step: JsonStep): UiStep {
   const base: UiStep = {
@@ -106,26 +106,47 @@ function uiToJson(ui: UiStep): JsonStep {
   }
 }
 
-function describe(ui: UiStep): string {
+function describe(ui: UiStep, isFirst: boolean): { headline: string; sub?: string } {
   switch (ui.kind) {
     case "immediate":
-      return "📞 Call straight away";
+      return {
+        headline: isFirst ? "Call them straight away" : "Call again straight after the previous attempt",
+        sub: isFirst ? "The instant the lead is added to the queue." : undefined,
+      };
     case "wait_minutes":
-      return `⏱ Wait ${ui.amount} minute${ui.amount === 1 ? "" : "s"} after previous attempt, then call`;
+      return {
+        headline: `Wait ${ui.amount} ${ui.amount === 1 ? "minute" : "minutes"}, then call`,
+        sub: isFirst ? "Measured from when the lead arrives." : "Measured from the previous attempt.",
+      };
     case "wait_hours":
-      return `⏱ Wait ${ui.amount} hour${ui.amount === 1 ? "" : "s"} after previous attempt, then call`;
+      return {
+        headline: `Wait ${ui.amount} ${ui.amount === 1 ? "hour" : "hours"}, then call`,
+        sub: isFirst ? "Measured from when the lead arrives." : "Measured from the previous attempt.",
+      };
     case "wait_days":
-      return `⏱ Wait ${ui.amount} day${ui.amount === 1 ? "" : "s"} after previous attempt, then call`;
+      return {
+        headline: `Wait ${ui.amount} ${ui.amount === 1 ? "day" : "days"}, then call`,
+        sub: isFirst ? "Measured from when the lead arrives." : "Measured from the previous attempt.",
+      };
     case "specific_day_time":
-      return `📅 ${ui.amount === 1 ? "Tomorrow" : `In ${ui.amount} days`} at ${ui.atTime}, call`;
+      return {
+        headline: `${ui.amount === 1 ? "Tomorrow" : `In ${ui.amount} days`} at ${ui.atTime}`,
+        sub: `Time is in the lead’s own time zone, so a London lead will get a call at ${ui.atTime} London time.`,
+      };
     case "next_workday_at":
-      return `🗓 Next working day at ${ui.atTime}, call`;
+      return {
+        headline: `On the next working day, call at ${ui.atTime}`,
+        sub: "Skips weekends. Time is in the lead’s time zone.",
+      };
     case "next_workday_random":
-      return `🎲 Next working day, random time between ${ui.randomFrom} and ${ui.randomTo}, call`;
+      return {
+        headline: `Next working day, anytime between ${ui.randomFrom} and ${ui.randomTo}`,
+        sub: "A natural-looking time is picked at random inside the window — avoids calling at exactly the same hour every day.",
+      };
   }
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────
+// ─── Component ─────────────────────────────────────────────────────────────
 
 export default function CadenceEditor({ initialMaxAttempts, initialCadenceJson }: Props) {
   const initialUiSteps: UiStep[] = (() => {
@@ -176,9 +197,9 @@ export default function CadenceEditor({ initialMaxAttempts, initialCadenceJson }
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        setResult({ ok: false, message: `Save failed: ${json.error ?? "unknown"}` });
+        setResult({ ok: false, message: `Couldn’t save: ${json.error ?? "unknown error"}` });
       } else {
-        setResult({ ok: true, message: "Saved. New cadence applies within ≤60 seconds on the next tick." });
+        setResult({ ok: true, message: "Saved. The new schedule applies within 60 seconds." });
       }
     } catch (err) {
       setResult({ ok: false, message: `Network error: ${String(err)}` });
@@ -187,191 +208,309 @@ export default function CadenceEditor({ initialMaxAttempts, initialCadenceJson }
     }
   }
 
-  return (
-    <div className="space-y-5">
-      <p className="text-sm text-neutral-600">
-        Build your call cadence below. Saved changes take effect within 60 seconds — no redeploy.
-      </p>
+  const effectiveMax = Math.min(maxAttempts, steps.length);
 
-      <div>
-        <label className="block text-sm font-medium">Maximum total call attempts</label>
-        <input
-          type="number"
-          min={1}
-          max={20}
-          value={maxAttempts}
-          onChange={(e) => setMaxAttempts(Number(e.target.value))}
-          className="mt-1 w-24 rounded-md border border-neutral-300 px-3 py-2"
-        />
-        <p className="mt-1 text-xs text-neutral-500">
-          If the lead doesn&apos;t pick up after this many calls, they&apos;re marked as exhausted. Should be ≤ the number of steps below.
+  return (
+    <div className="space-y-7">
+      <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] items-start gap-4 md:gap-8">
+        <div>
+          <label
+            htmlFor="max-attempts"
+            className="eyebrow"
+          >
+            Maximum calls
+          </label>
+          <input
+            id="max-attempts"
+            type="number"
+            min={1}
+            max={20}
+            value={maxAttempts}
+            onChange={(e) => setMaxAttempts(Number(e.target.value))}
+            className="field mt-2 w-24 text-[1.5rem] text-center"
+            style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
+          />
+        </div>
+        <p className="text-[0.93rem] text-[rgb(var(--ink-2))] mt-1">
+          We’ll stop after this many call attempts even if the lead never picks up. You’ve set up
+          <span className="text-[rgb(var(--ink))]"> {steps.length} step{steps.length === 1 ? "" : "s"}</span>{" "}
+          below — so in practice the limit is{" "}
+          <span className="text-[rgb(var(--ink))]">{effectiveMax} call{effectiveMax === 1 ? "" : "s"}</span>.
         </p>
       </div>
 
+      <div className="hairline" />
+
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-sm font-medium">Call steps (in order)</label>
+        <div className="flex items-baseline justify-between mb-4">
+          <div className="eyebrow">Call sequence</div>
           <button
             type="button"
             onClick={addStep}
-            className="rounded-md border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-50"
+            className="btn-ghost text-sm"
           >
-            + Add step
+            + Add another call
           </button>
         </div>
 
-        <ol className="space-y-3">
+        <ol className="space-y-4">
           {steps.map((s, i) => (
-            <li key={i} className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
-              <div className="flex items-start gap-3">
-                <span className="mt-2 w-6 text-center text-sm font-medium text-neutral-500">{i + 1}</span>
-                <div className="flex-1 space-y-2">
-                  <select
-                    value={s.kind}
-                    onChange={(e) => updateStep(i, { kind: e.target.value as StepKind })}
-                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
-                  >
-                    {KIND_OPTIONS.map((k) => (
-                      <option key={k} value={k}>{KIND_LABELS[k]}</option>
-                    ))}
-                  </select>
-
-                  {renderInputs(s, (patch) => updateStep(i, patch))}
-
-                  <p className="text-xs text-neutral-600">{describe(s)}</p>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() => moveStep(i, -1)}
-                    disabled={i === 0}
-                    className="rounded px-2 py-1 text-xs hover:bg-neutral-200 disabled:opacity-30"
-                    title="Move up"
-                  >↑</button>
-                  <button
-                    type="button"
-                    onClick={() => moveStep(i, 1)}
-                    disabled={i === steps.length - 1}
-                    className="rounded px-2 py-1 text-xs hover:bg-neutral-200 disabled:opacity-30"
-                    title="Move down"
-                  >↓</button>
-                  <button
-                    type="button"
-                    onClick={() => removeStep(i)}
-                    className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                    title="Remove"
-                  >✕</button>
-                </div>
-              </div>
-            </li>
+            <StepCard
+              key={i}
+              index={i}
+              total={steps.length}
+              step={s}
+              onUpdate={(patch) => updateStep(i, patch)}
+              onRemove={() => removeStep(i)}
+              onMoveUp={() => moveStep(i, -1)}
+              onMoveDown={() => moveStep(i, 1)}
+            />
           ))}
           {steps.length === 0 && (
-            <li className="rounded-md border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500">
-              No steps yet. Click <b>+ Add step</b> to create your first one.
+            <li className="card border-dashed p-8 text-center">
+              <p
+                className="text-[1.15rem] text-[rgb(var(--ink))]"
+                style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
+              >
+                No calls scheduled yet
+              </p>
+              <p className="mt-2 text-[0.92rem] text-[rgb(var(--ink-2))]">
+                Click <em>Add another call</em> above to create the first one.
+              </p>
             </li>
           )}
         </ol>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-neutral-200 pt-4">
+      <div className="hairline" />
+
+      <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:justify-between">
         <button
           type="button"
           onClick={save}
           disabled={saving || steps.length === 0}
-          className="rounded-md bg-brand px-4 py-2 text-brand-fg disabled:opacity-50"
+          className="btn-primary"
         >
-          {saving ? "Saving..." : "Save cadence"}
+          {saving ? "Saving…" : "Save calling schedule"}
         </button>
         {result && (
-          <span className={result.ok ? "text-sm text-green-700" : "text-sm text-red-700"}>{result.message}</span>
+          <span
+            className={`text-sm ${
+              result.ok ? "text-[rgb(var(--tag-picked-fg))]" : "text-[rgb(var(--tag-stopped-fg))]"
+            }`}
+          >
+            {result.message}
+          </span>
         )}
       </div>
     </div>
   );
 }
 
+// ─── Step card ─────────────────────────────────────────────────────────────
+
+function StepCard({
+  index,
+  total,
+  step,
+  onUpdate,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+}: {
+  index: number;
+  total: number;
+  step: UiStep;
+  onUpdate: (patch: Partial<UiStep>) => void;
+  onRemove: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
+  const desc = describe(step, index === 0);
+
+  return (
+    <li className="card p-5 md:p-6">
+      <div className="flex gap-4 md:gap-6">
+        <div className="shrink-0 pt-1">
+          <div
+            className="h-9 w-9 rounded-full border border-[rgb(var(--line-strong))] flex items-center justify-center"
+            style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
+            aria-hidden
+          >
+            {index + 1}
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0 space-y-3">
+          <div>
+            <div className="eyebrow mb-1">Call {index + 1} of {total}</div>
+            <h3
+              className="text-[1.2rem] leading-snug tracking-tight"
+              style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
+            >
+              {desc.headline}
+            </h3>
+            {desc.sub && (
+              <p className="mt-1 text-[0.88rem] text-[rgb(var(--ink-3))]">{desc.sub}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 pt-1">
+            <select
+              value={step.kind}
+              onChange={(e) => onUpdate({ kind: e.target.value as StepKind })}
+              className="field w-full md:max-w-md text-[0.92rem]"
+              aria-label={`Type of call ${index + 1}`}
+            >
+              {KIND_OPTIONS.map((k) => (
+                <option key={k} value={k}>{KIND_LABELS[k]}</option>
+              ))}
+            </select>
+
+            {renderInputs(step, onUpdate)}
+          </div>
+        </div>
+
+        <div className="shrink-0 flex flex-col gap-1.5 items-end">
+          <IconButton onClick={onMoveUp} disabled={index === 0} label="Move up">
+            ↑
+          </IconButton>
+          <IconButton onClick={onMoveDown} disabled={index === total - 1} label="Move down">
+            ↓
+          </IconButton>
+          <IconButton onClick={onRemove} danger label="Remove">
+            ✕
+          </IconButton>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function IconButton({
+  onClick,
+  disabled,
+  danger,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`h-7 w-7 rounded-md border text-[0.8rem] flex items-center justify-center transition-colors ${
+        danger
+          ? "border-[rgb(var(--tag-stopped-edge))] text-[rgb(var(--tag-stopped-fg))] hover:bg-[rgb(var(--tag-stopped-bg))]"
+          : "border-[rgb(var(--line))] text-[rgb(var(--ink-2))] hover:bg-[rgb(var(--paper-deep))]"
+      } disabled:opacity-30 disabled:cursor-not-allowed`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function renderInputs(s: UiStep, set: (patch: Partial<UiStep>) => void): React.ReactNode {
-  if (s.kind === "immediate") return null;
+  if (s.kind === "immediate") {
+    return (
+      <p className="text-[0.85rem] text-[rgb(var(--ink-3))]">
+        No timing to set — the call goes out the moment we’re ready.
+      </p>
+    );
+  }
 
   if (s.kind === "wait_minutes" || s.kind === "wait_hours" || s.kind === "wait_days") {
-    const unitLabel = s.kind === "wait_minutes" ? "minutes" : s.kind === "wait_hours" ? "hours" : "days";
+    const unitLabel =
+      s.kind === "wait_minutes" ? "minutes" : s.kind === "wait_hours" ? "hours" : "days";
     return (
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-neutral-600">Wait</span>
+      <Row>
+        <span className="text-[rgb(var(--ink-2))]">Wait</span>
         <input
           type="number"
           min={1}
           max={s.kind === "wait_minutes" ? 1440 : s.kind === "wait_hours" ? 168 : 30}
           value={s.amount}
           onChange={(e) => set({ amount: Math.max(1, Number(e.target.value)) })}
-          className="w-20 rounded-md border border-neutral-300 px-2 py-1"
+          className="field w-20 text-center"
         />
-        <span className="text-neutral-600">{unitLabel}</span>
-      </div>
+        <span className="text-[rgb(var(--ink-2))]">{unitLabel}</span>
+      </Row>
     );
   }
 
   if (s.kind === "specific_day_time") {
     return (
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-neutral-600">In</span>
+      <Row>
+        <span className="text-[rgb(var(--ink-2))]">In</span>
         <input
           type="number"
           min={1}
           max={30}
           value={s.amount}
           onChange={(e) => set({ amount: Math.max(1, Number(e.target.value)) })}
-          className="w-20 rounded-md border border-neutral-300 px-2 py-1"
+          className="field w-20 text-center"
         />
-        <span className="text-neutral-600">days, at</span>
+        <span className="text-[rgb(var(--ink-2))]">days, at</span>
         <input
           type="time"
           value={s.atTime}
           onChange={(e) => set({ atTime: e.target.value })}
-          className="rounded-md border border-neutral-300 px-2 py-1"
+          className="field"
         />
-        <span className="text-neutral-600 text-xs">(lead&apos;s local time)</span>
-      </div>
+      </Row>
     );
   }
 
   if (s.kind === "next_workday_at") {
     return (
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-neutral-600">At</span>
+      <Row>
+        <span className="text-[rgb(var(--ink-2))]">At</span>
         <input
           type="time"
           value={s.atTime}
           onChange={(e) => set({ atTime: e.target.value })}
-          className="rounded-md border border-neutral-300 px-2 py-1"
+          className="field"
         />
-        <span className="text-neutral-600 text-xs">(lead&apos;s local time)</span>
-      </div>
+      </Row>
     );
   }
 
   if (s.kind === "next_workday_random") {
     return (
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-neutral-600">Between</span>
+      <Row>
+        <span className="text-[rgb(var(--ink-2))]">Between</span>
         <input
           type="time"
           value={s.randomFrom}
           onChange={(e) => set({ randomFrom: e.target.value })}
-          className="rounded-md border border-neutral-300 px-2 py-1"
+          className="field"
         />
-        <span className="text-neutral-600">and</span>
+        <span className="text-[rgb(var(--ink-2))]">and</span>
         <input
           type="time"
           value={s.randomTo}
           onChange={(e) => set({ randomTo: e.target.value })}
-          className="rounded-md border border-neutral-300 px-2 py-1"
+          className="field"
         />
-        <span className="text-neutral-600 text-xs">(picks a random minute in the window)</span>
-      </div>
+      </Row>
     );
   }
 
   return null;
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[0.95rem]">
+      {children}
+    </div>
+  );
 }
