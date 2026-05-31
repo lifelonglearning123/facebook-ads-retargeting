@@ -58,10 +58,12 @@ export async function updateContactCustomFields(
   contactId: string,
   fields: Record<string, unknown>
 ): Promise<void> {
+  // GHL's PUT /contacts/{id} rejects locationId in the body with 422; the
+  // location is implicit from the PIT.
   const customFields = Object.entries(fields).map(([key, value]) => ({ key, field_value: value }));
   await req(`/contacts/${contactId}`, {
     method: "PUT",
-    body: JSON.stringify({ customFields, locationId: APP.ghl.locationId }),
+    body: JSON.stringify({ customFields }),
   });
 }
 
