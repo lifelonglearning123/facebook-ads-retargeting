@@ -97,7 +97,7 @@ async function fireStep(lead: LeadState): Promise<void> {
       return;
     }
     const body = renderTemplate(tpl, vars);
-    await sendSms({ toNumber: lead.phone, body });
+    await sendSms({ contactId: lead.contactId, body });
     await writeLeadState(lead.contactId, {
       lastAttemptAt: new Date(),
       lastOutcome: "sms_sent",
@@ -121,12 +121,7 @@ async function fireStep(lead: LeadState): Promise<void> {
     }
     const subject = renderTemplate(tpl.subject, vars);
     const html = renderTemplate(tpl.html, vars);
-    await sendEmail({
-      to: lead.email,
-      subject,
-      html,
-      unsubscribeUrl: `${APP.appUrl}/u/${lead.contactId}`,
-    });
+    await sendEmail({ contactId: lead.contactId, subject, html });
     await writeLeadState(lead.contactId, {
       lastAttemptAt: new Date(),
       lastOutcome: "email_sent",

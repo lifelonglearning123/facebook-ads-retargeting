@@ -18,7 +18,7 @@ export async function placeVoiceCall(opts: PlaceCallOpts): Promise<{ call_id: st
       Authorization: `Bearer ${APP.retell.apiKey}`,
     },
     body: JSON.stringify({
-      from_number: APP.twilio.phoneNumber,
+      from_number: APP.retell.fromNumber,
       to_number: opts.toNumber,
       override_agent_id: APP.retell.agentId,
       metadata: opts.metadata ?? {},

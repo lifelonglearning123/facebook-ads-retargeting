@@ -94,6 +94,56 @@ export async function listNotes(contactId: string, limit = 50): Promise<Array<{ 
   return data.notes ?? [];
 }
 
+// ─── Conversations (SMS / Email) ──────────────────────────────────────────
+
+interface SendSmsViaGhlOpts {
+  contactId: string;
+  message: string;
+}
+
+interface SendEmailViaGhlOpts {
+  contactId: string;
+  subject: string;
+  html: string;
+  emailFrom?: string;       // override sender — optional
+}
+
+/**
+ * Send an SMS through GHL's conversations API. GHL routes via the location's
+ * connected SMS provider (Twilio under the hood) and handles compliance
+ * (STOP keywords, do-not-disturb) automatically.
+ */
+export async function sendSmsViaGhl(opts: SendSmsViaGhlOpts): Promise<{ messageId: string }> {
+  const data = await req<{ messageId: string; conversationId?: string }>("/conversations/messages", {
+    method: "POST",
+    body: JSON.stringify({
+      type: "SMS",
+      contactId: opts.contactId,
+      message: opts.message,
+    }),
+  });
+  return { messageId: data.messageId };
+}
+
+/**
+ * Send an email through GHL's conversations API. GHL handles bounces and
+ * unsubscribe links natively.
+ */
+export async function sendEmailViaGhl(opts: SendEmailViaGhlOpts): Promise<{ messageId: string }> {
+  const body: Record<string, unknown> = {
+    type: "Email",
+    contactId: opts.contactId,
+    subject: opts.subject,
+    html: opts.html,
+  };
+  if (opts.emailFrom) body.emailFrom = opts.emailFrom;
+  const data = await req<{ messageId: string }>("/conversations/messages", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return { messageId: data.messageId };
+}
+
 // ─── Contact search by tag ────────────────────────────────────────────────
 
 export interface SearchOpts {

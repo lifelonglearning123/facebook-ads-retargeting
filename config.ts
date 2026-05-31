@@ -69,19 +69,17 @@ export const APP = {
     exhaustedTag: "ai-exhausted",
     stopTag: "stop-ai-callback",
   },
-  twilio: {
-    accountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
-    authToken: process.env.TWILIO_AUTH_TOKEN ?? "",
-    phoneNumber: process.env.TWILIO_PHONE_NUMBER ?? "",
-  },
   retell: {
     apiKey: process.env.RETELL_API_KEY ?? "",
     agentId: process.env.RETELL_AGENT_ID ?? "",
+    /** Outbound caller-id used by Retell's create-phone-call. This is the
+     *  number you registered inside Retell (Retell manages the Twilio side). */
+    fromNumber: process.env.RETELL_FROM_NUMBER ?? "",
   },
   email: {
-    apiKey: process.env.RESEND_API_KEY ?? "",
-    fromAddress: process.env.RESEND_FROM_EMAIL ?? "",
-    fromName: process.env.RESEND_FROM_NAME ?? "",
+    /** Optional override for the From address used when sending email via
+     *  GHL's conversations API. If blank, GHL uses the location's default. */
+    fromAddress: process.env.GHL_EMAIL_FROM ?? "",
   },
   admin: {
     /** HTTP basic-auth password. If empty, dashboard is open (useful in dev only). */

@@ -5,20 +5,15 @@ export const dynamic = "force-dynamic";
 export default function ConfigPage() {
   const startUrl = `${APP.appUrl}/api/ghl/start`;
   const stopUrl = `${APP.appUrl}/api/ghl/stop`;
-  const inboundVoiceUrl = `${APP.appUrl}/api/twilio/voice`;
-  const inboundSmsUrl = `${APP.appUrl}/api/twilio/sms`;
   const retellPostcallUrl = `${APP.appUrl}/api/retell/postcall`;
 
   const integrations = [
     { label: "GHL location ID", value: APP.ghl.locationId, set: !!APP.ghl.locationId },
     { label: "GHL PIT", value: APP.ghl.pitToken ? "•••••" : "", set: !!APP.ghl.pitToken },
-    { label: "Twilio Account SID", value: APP.twilio.accountSid, set: !!APP.twilio.accountSid },
-    { label: "Twilio Auth Token", value: APP.twilio.authToken ? "•••••" : "", set: !!APP.twilio.authToken },
-    { label: "Twilio number", value: APP.twilio.phoneNumber, set: !!APP.twilio.phoneNumber },
     { label: "Retell API key", value: APP.retell.apiKey ? "•••••" : "", set: !!APP.retell.apiKey },
     { label: "Retell agent ID", value: APP.retell.agentId, set: !!APP.retell.agentId },
-    { label: "Resend API key", value: APP.email.apiKey ? "•••••" : "", set: !!APP.email.apiKey },
-    { label: "Resend from", value: APP.email.fromAddress, set: !!APP.email.fromAddress },
+    { label: "Retell from number", value: APP.retell.fromNumber, set: !!APP.retell.fromNumber },
+    { label: "Email from (override)", value: APP.email.fromAddress || "(uses GHL default)", set: true },
   ];
 
   return (
@@ -30,12 +25,14 @@ export default function ConfigPage() {
         </p>
       </header>
 
-      <Section title="Webhook URLs to paste into GHL / Twilio">
+      <Section title="Webhook URLs to paste into GHL / Retell">
         <UrlRow label="GHL → Start workflow webhook" value={startUrl} />
         <UrlRow label="GHL → Stop workflow webhook" value={stopUrl} />
         <UrlRow label="Retell → Post-call webhook" value={retellPostcallUrl} />
-        <UrlRow label="Twilio → Inbound voice webhook" value={inboundVoiceUrl} />
-        <UrlRow label="Twilio → Inbound SMS webhook" value={inboundSmsUrl} />
+        <p className="mt-3 text-xs text-neutral-500">
+          Inbound SMS replies and email unsubscribes are handled inside GHL natively.
+          Inbound voice goes to the Retell-managed phone number directly.
+        </p>
       </Section>
 
       <Section title="Integrations">

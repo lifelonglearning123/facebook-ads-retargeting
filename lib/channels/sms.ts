@@ -1,34 +1,16 @@
-import { APP } from "@/config";
+import { sendSmsViaGhl } from "@/lib/ghl/client";
 
 interface SendSmsOpts {
-  toNumber: string;
+  contactId: string;
   body: string;
 }
 
-export async function sendSms(opts: SendSmsOpts): Promise<{ sid: string }> {
-  const auth = Buffer.from(`${APP.twilio.accountSid}:${APP.twilio.authToken}`).toString("base64");
-  const form = new URLSearchParams({
-    From: APP.twilio.phoneNumber,
-    To: opts.toNumber,
-    Body: opts.body,
-  });
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${APP.twilio.accountSid}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Twilio SMS send failed: ${res.status} ${text}`);
-  }
-  const json = (await res.json()) as { sid: string };
-  return { sid: json.sid };
+/**
+ * Send an SMS via GHL's conversations API. GHL routes through the location's
+ * connected SMS provider and handles STOP/DND compliance.
+ */
+export async function sendSms(opts: SendSmsOpts): Promise<{ messageId: string }> {
+  return sendSmsViaGhl({ contactId: opts.contactId, message: opts.body });
 }
 
 export function renderTemplate(body: string, vars: Record<string, string | undefined>): string {

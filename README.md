@@ -2,7 +2,7 @@
 
 Single-customer AI voice + SMS + email retargeting for Facebook ad leads. Triggered from GoHighLevel.
 
-**Stack:** Next.js 15 on Vercel + Resend, with GHL as the database. No Supabase. No Stripe. No Redis. Sized for ≤100 leads/day per deployment.
+**Stack:** Next.js 15 on Vercel + Retell (voice) + GHL (state, SMS, email). No Supabase, no Stripe, no Twilio creds, no Resend. Sized for ≤100 leads/day per deployment.
 
 ## Architecture
 
@@ -19,8 +19,8 @@ Vercel Cron every minute
                             update custom fields + append note
    ↓
 Retell post-call          → /api/retell/postcall: outcome → engaged or schedule next
-Twilio inbound SMS        → /api/twilio/sms: STOP/reply detection
-Twilio inbound voice      → /api/twilio/voice: SIP dial to Retell agent
+Inbound SMS replies       → handled inside GHL (workflow on reply triggers /api/ghl/stop)
+Inbound voice             → Retell-managed number answers directly
    ↓
 GHL workflow (booked / stop tag)
    ↓
@@ -33,6 +33,8 @@ GHL workflow (booked / stop tag)
 |---|---|
 | Per-lead state | GHL contact custom fields |
 | Attempt history | GHL contact notes |
+| SMS + email sending | GHL conversations API |
+| Voice calls | Retell (via Retell-managed phone number) |
 | Campaign cadence + templates | `config.ts` (committed) |
 | Credentials | Vercel env vars |
 | Branding | Vercel env vars |
@@ -48,14 +50,12 @@ app/
     ghl/{start,stop}/route.ts    # GHL webhook entrypoints
     tick/route.ts                # Vercel cron — fires due steps
     retell/postcall/route.ts     # call-end webhook
-    twilio/{voice,sms}/route.ts  # inbound handlers
   page.tsx                       # admin queue
   config/page.tsx                # admin config view
   lead/[contactId]/page.tsx      # admin lead detail
-  u/[contactId]/page.tsx         # email unsubscribe
 lib/
   cadence/                       # types, business-day math, scheduler, advance logic
-  channels/                      # voice (Retell), sms (Twilio), email (Resend)
+  channels/                      # voice (Retell), sms (GHL), email (GHL)
   ghl/                           # GHL v2 API client + Zod webhook schemas
   state.ts                       # per-lead state via GHL custom fields
   timezone.ts                    # lead tz from GHL or phone area code
@@ -74,11 +74,10 @@ npm run dev
 
 Then in the customer's GHL location:
 1. Create the custom fields and tags defined in `snapshot/ghl-snapshot-spec.json`.
-2. Generate a Private Integration Token, paste into `GHL_PIT`.
+2. Generate a Private Integration Token with conversations write scope, paste into `GHL_PIT`.
 3. Build the two workflows (Start + Stop) — copy URLs from the dashboard's `/config` page.
-4. Configure Twilio number's inbound voice + SMS webhooks (URLs also on `/config`).
-5. Add `https://<your-app>/api/retell/postcall` to your Retell agent's webhook settings.
-6. Deploy to Vercel.
+4. Add `https://<your-app>/api/retell/postcall` to your Retell agent's webhook settings.
+5. Deploy to Vercel.
 
 See `docs/agency-onboarding.md` for the step-by-step.
 

@@ -39,12 +39,17 @@ GHL → **Settings → Private Integrations → Create token**. Scopes:
 - `customFields.readonly`
 - `customFields.write`
 - `tags.write`
+- `conversations.readonly`
+- `conversations.write`
+- `conversations/message.write`         (sends SMS + email via GHL)
 
 Paste into Vercel env var `GHL_PIT`. Paste the location ID into `GHL_LOCATION_ID`.
 
 ## 3. Fill in remaining env vars
 
-`AGENCY_NAME`, `AGENCY_TIMEZONE`, branding vars, Twilio creds, Retell creds, Resend creds, `ADMIN_PASSWORD`, `CRON_SECRET`. See `.env.example`.
+`AGENCY_NAME`, `AGENCY_TIMEZONE`, branding vars, Retell creds (`RETELL_API_KEY`, `RETELL_AGENT_ID`, `RETELL_FROM_NUMBER`), `ADMIN_PASSWORD`, `CRON_SECRET`. See `.env.example`.
+
+SMS and email go through GHL's conversations API — no Twilio or Resend creds needed.
 
 ## 4. Build the GHL workflows
 
@@ -78,16 +83,20 @@ Open the dashboard's `/config` page — it shows the exact webhook URLs.
    { "contact_id": "{{contact.id}}", "reason": "ghl_workflow" }
    ```
 
-## 5. Wire Twilio number webhooks
-
-Twilio Console → Phone Numbers → your number:
-
-- **A call comes in** → Webhook → URL from `/config` (`/api/twilio/voice`)
-- **A message comes in** → Webhook → URL from `/config` (`/api/twilio/sms`)
-
-## 6. Wire Retell post-call webhook
+## 5. Wire Retell post-call webhook
 
 Retell → your agent → Webhooks → add `https://<app>/api/retell/postcall`.
+
+Inbound voice (lead calls back the Retell number) is handled by Retell directly — no Twilio webhook configuration needed on your end.
+
+## 6. (Optional) GHL workflow on SMS reply
+
+GHL handles STOP keywords automatically (sets the contact's DND flag, blocks future sends). If you want a non-STOP reply to also cancel future cadence steps + mark the lead as engaged so sales can take over, add a small workflow:
+
+1. Trigger: **Customer replied (SMS)**.
+2. Action: Webhook → URL from `/config` (Stop) with body `{ "contact_id": "{{contact.id}}", "reason": "sms_reply" }`.
+
+If you skip this, GHL still routes the reply into your conversations inbox; our app just keeps trying the cadence until max attempts or STOP.
 
 ## 7. Test
 
