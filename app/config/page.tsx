@@ -15,7 +15,6 @@ export default function ConfigPage() {
     { label: "Retell API key", value: APP.retell.apiKey ? "•••••" : "", set: !!APP.retell.apiKey },
     { label: "Retell agent ID", value: APP.retell.agentId, set: !!APP.retell.agentId },
     { label: "Retell from number", value: APP.retell.fromNumber, set: !!APP.retell.fromNumber },
-    { label: "Email from (override)", value: APP.email.fromAddress || "(uses GHL default)", set: true },
   ];
 
   return (

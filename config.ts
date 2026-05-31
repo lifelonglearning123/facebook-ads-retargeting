@@ -101,30 +101,19 @@ export const CAMPAIGN: CampaignConfig = {
   cadence: [
     // Step 0: fire immediately — FB lead has just consented, strike while hot
     { channel: "voice", delay: "0min" },
-    // Step 1: if they didn't pick up, try again in 5 min
+    // Step 1: retry in 5 min if no answer
     { channel: "voice", delay: "5min" },
-    // Step 2: SMS nudge after 10 more min
-    { channel: "sms", delay: "10min", template_id: "missed_call" },
-    // Step 3: one more call 30 min after the SMS
+    // Step 2: retry in 30 min
     { channel: "voice", delay: "30min" },
-    // Step 4: email follow-up the next morning
-    { channel: "email", after: "1d", at: "09:00", template_id: "day_two_followup" },
-    // Step 5: final call attempt the next business day
-    { channel: "voice", rule: "next_business_day", random_between: ["10:00", "17:00"] },
+    // Step 3: retry in 2 hours
+    { channel: "voice", delay: "2h" },
+    // Step 4: next business day, mid-morning
+    { channel: "voice", rule: "next_business_day", at: "10:00" },
+    // Step 5: final attempt, next business day afternoon (random within window)
+    { channel: "voice", rule: "next_business_day", random_between: ["13:00", "17:00"] },
   ],
 };
 
-export const TEMPLATES: TemplateMap = {
-  missed_call: {
-    sms: "Hi {{first_name}}, this is {{agency_name}} — we just tried calling about your enquiry. Reply here or call us back when you have a moment.",
-  },
-  day_two_followup: {
-    email: {
-      subject: "Following up on your enquiry",
-      html: `<p>Hi {{first_name}},</p>
-<p>We tried calling yesterday and didn't manage to reach you. We'd love to help with the project you enquired about.</p>
-<p>Reply to this email or grab a time that suits you and we'll call then.</p>
-<p>Best,<br/>{{agency_name}}</p>`,
-    },
-  },
-};
+// Voice-only deployment — templates kept for future use if SMS/email steps
+// are reintroduced in the cadence.
+export const TEMPLATES: TemplateMap = {};
