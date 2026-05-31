@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/tick?secret=__CRON_SECRET__",
+      "path": "/api/tick?secret=adkwid8e84()_*'#djwdi`1345ffs'",
       "schedule": "* * * * *"
     }
   ]
