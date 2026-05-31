@@ -4,19 +4,14 @@ import { GhlStartPayloadSchema } from "@/lib/ghl/webhook";
 import { resolveLeadTimezone } from "@/lib/timezone";
 import { nextAttemptAt } from "@/lib/cadence/schedule";
 import { pickFirstStep } from "@/lib/cadence/advance";
-import { APP, CAMPAIGN } from "@/config";
+import { APP } from "@/config";
 import { enterCadence, loadLeadState, recordAttempt } from "@/lib/state";
 import { fireStep } from "@/lib/dispatch";
 import { removeTag } from "@/lib/ghl/client";
+import { getCampaign } from "@/lib/runtime-config";
 
 export const runtime = "nodejs";
 
-/**
- * GHL workflow webhook entrypoint. Fires when the agency's "Start AI
- * Callback" workflow runs (typically on tag added). We compute the lead's
- * first cadence step and write it back to the contact's custom fields; the
- * /api/tick cron picks it up from there.
- */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const parsed = GhlStartPayloadSchema.safeParse(body);
@@ -30,7 +25,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_phone" }, { status: 400 });
   }
 
-  const first = pickFirstStep();
+  const campaign = await getCampaign();
+  const first = pickFirstStep(campaign);
   if (!first) {
     return NextResponse.json({ ok: true, contact_id: p.contact_id, scheduled: false, reason: "empty_cadence" });
   }
@@ -44,13 +40,11 @@ export async function POST(req: Request) {
   const fireAt = nextAttemptAt(first.step, {
     baseline: new Date(),
     leadTz,
-    quietHours: CAMPAIGN.quietHours,
-    spread: CAMPAIGN.spreadHours,
+    quietHours: campaign.quietHours,
+    spread: campaign.spreadHours,
   });
 
-  // Consent assumed (FB Lead Form gave it upstream).
   await enterCadence(p.contact_id, first.stepIndex, fireAt, { sms: true, email: true });
-  // Best-effort: clear the trigger tag so polling intake doesn't re-process.
   await removeTag(p.contact_id, APP.ghl.sourceTag).catch(() => {});
 
   const isDueNow = fireAt.getTime() <= Date.now() + 30_000;
@@ -58,7 +52,7 @@ export async function POST(req: Request) {
   if (isDueNow) {
     const refreshed = await loadLeadState(p.contact_id);
     if (refreshed) {
-      await fireStep({
+      await fireStep(campaign, {
         ...refreshed,
         phone: phone.number,
         timezone: refreshed.timezone ?? leadTz,

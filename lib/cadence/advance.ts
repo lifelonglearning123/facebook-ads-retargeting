@@ -1,4 +1,4 @@
-import { CAMPAIGN } from "@/config";
+import type { CampaignConfig } from "@/config";
 import type { LeadState } from "@/lib/state";
 import { nextAttemptAt } from "./schedule";
 import type { CadenceStep } from "./types";
@@ -17,12 +17,17 @@ interface AdvanceOk {
 
 /**
  * Decide the next step in the campaign cadence after an attempt completes.
- * Pure function over the in-memory campaign config + the lead state — no IO.
+ * Pure over the supplied campaign config + lead state.
  */
-export function computeNextStep(lead: LeadState, baseline: Date, recentAttemptHoursUtc: number[] = []): AdvanceOk | AdvanceResult {
-  const cadence = CAMPAIGN.cadence;
+export function computeNextStep(
+  campaign: CampaignConfig,
+  lead: LeadState,
+  baseline: Date,
+  recentAttemptHoursUtc: number[] = []
+): AdvanceOk | AdvanceResult {
+  const cadence = campaign.cadence;
   const totalAttempts = lead.attempts.voice + lead.attempts.sms + lead.attempts.email;
-  if (totalAttempts >= CAMPAIGN.maxAttempts) return { scheduled: false, reason: "max_attempts" };
+  if (totalAttempts >= campaign.maxAttempts) return { scheduled: false, reason: "max_attempts" };
 
   const next = lead.stepIndex + 1;
   if (next >= cadence.length) return { scheduled: false, reason: "cadence_exhausted" };
@@ -32,8 +37,8 @@ export function computeNextStep(lead: LeadState, baseline: Date, recentAttemptHo
   const fireAt = nextAttemptAt(step, {
     baseline,
     leadTz,
-    quietHours: CAMPAIGN.quietHours,
-    spread: CAMPAIGN.spreadHours,
+    quietHours: campaign.quietHours,
+    spread: campaign.spreadHours,
     recentHours: recentAttemptHoursUtc,
   });
 
@@ -41,7 +46,7 @@ export function computeNextStep(lead: LeadState, baseline: Date, recentAttemptHo
 }
 
 /** Pick the first step. Used at intake. */
-export function pickFirstStep(): { stepIndex: number; step: CadenceStep } | null {
-  const step = CAMPAIGN.cadence[0];
+export function pickFirstStep(campaign: CampaignConfig): { stepIndex: number; step: CadenceStep } | null {
+  const step = campaign.cadence[0];
   return step ? { stepIndex: 0, step } : null;
 }

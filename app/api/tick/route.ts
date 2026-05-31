@@ -4,6 +4,7 @@ import { searchByTag } from "@/lib/ghl/client";
 import { leadStateFromContact, recordAttempt } from "@/lib/state";
 import { fireStep } from "@/lib/dispatch";
 import { runIntake } from "@/lib/intake";
+import { getCampaign } from "@/lib/runtime-config";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,12 +12,7 @@ export const maxDuration = 60;
 const NOW_TOLERANCE_MS = 30_000;
 
 /**
- * Vercel cron hits this every minute.
- *
- * 1) Intake pass: pull any newly-tagged "ai-callback" contacts into the
- *    cadence, fire the first step immediately if it's due.
- * 2) Dispatch pass: for contacts already in cadence, fire any step whose
- *    next_attempt_at has elapsed.
+ * Vercel cron hits this every minute. Two-pass: intake then dispatch.
  */
 export async function GET(req: Request) {
   const secret = req.headers.get("X-Cron-Secret") ?? new URL(req.url).searchParams.get("secret");
@@ -24,7 +20,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "unauthorised" }, { status: 401 });
   }
 
-  const intake = await runIntake().catch((err) => ({
+  const campaign = await getCampaign();
+
+  const intake = await runIntake(campaign).catch((err) => ({
     scanned: 0, started: 0, skipped: 0, failed: 1, error: String(err),
   }));
 
@@ -40,10 +38,10 @@ export async function GET(req: Request) {
     if (!lead.nextAttemptAt) { skipped++; continue; }
     if (lead.nextAttemptAt.getTime() > now.getTime() + NOW_TOLERANCE_MS) { skipped++; continue; }
     if (["stopped", "engaged", "exhausted"].includes(lead.status)) { skipped++; continue; }
-    if (lead.activeCallId) { skipped++; continue; }   // call already in flight
+    if (lead.activeCallId) { skipped++; continue; }
 
     try {
-      await fireStep(lead);
+      await fireStep(campaign, lead);
       fired++;
     } catch (err) {
       failed++;

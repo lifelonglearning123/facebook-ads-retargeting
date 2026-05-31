@@ -1,10 +1,14 @@
-import { APP, CAMPAIGN, TEMPLATES } from "@/config";
+import { APP } from "@/config";
+import { getCampaign } from "@/lib/runtime-config";
 import ProvisionButton from "./ProvisionButton";
 import RetellSetupButton from "./RetellSetupButton";
+import CadenceEditor from "./CadenceEditor";
 
 export const dynamic = "force-dynamic";
 
-export default function ConfigPage() {
+export default async function ConfigPage() {
+  const campaign = await getCampaign();
+
   const startUrl = `${APP.appUrl}/api/ghl/start`;
   const stopUrl = `${APP.appUrl}/api/ghl/stop`;
   const retellPostcallUrl = `${APP.appUrl}/api/retell/postcall`;
@@ -22,9 +26,19 @@ export default function ConfigPage() {
       <header>
         <h1 className="text-2xl font-semibold">Configuration</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          All config lives in <code>config.ts</code> + environment variables. Edit and redeploy to change.
+          Edit max attempts and cadence below — saved to GHL Custom Values, applied within ≤60s, no redeploy. Other integrations and credentials live in environment variables.
         </p>
       </header>
+
+      <Section title="Campaign cadence">
+        <CadenceEditor
+          initialMaxAttempts={campaign.maxAttempts}
+          initialCadenceJson={JSON.stringify(campaign.cadence, null, 2)}
+        />
+        <p className="mt-4 text-xs text-neutral-500">
+          Current quiet hours (not editable here): {campaign.quietHours.start}–{campaign.quietHours.end} on days {campaign.quietHours.days.join(",")}. Spread retries across the day: {campaign.spreadHours ? "on" : "off"}.
+        </p>
+      </Section>
 
       <Section title="GHL provisioning">
         <ProvisionButton />
@@ -41,20 +55,15 @@ export default function ConfigPage() {
             Our <code>/api/tick</code> cron picks it up within ≤60 seconds, validates the phone, and starts the cadence.
           </p>
           <p>
-            <b>Optional (instant trigger):</b> if you want the first step queued immediately, set up a GHL workflow
-            with trigger <i>Contact Tag Added → ai-callback</i> and a webhook action pointing at the URL below. Skip this if 60s of intake latency is fine.
+            <b>Optional (instant trigger):</b> set up a GHL workflow with trigger <i>Contact Tag Added → ai-callback</i> and a webhook action pointing at the Start URL below.
           </p>
         </div>
       </Section>
 
-      <Section title="Webhook URLs (optional integrations)">
+      <Section title="Webhook URLs">
         <UrlRow label="GHL → Start workflow webhook (optional)" value={startUrl} />
         <UrlRow label="GHL → Stop workflow webhook (optional, e.g. on appointment booked)" value={stopUrl} />
         <UrlRow label="Retell → Post-call webhook (auto-configured by setup button above)" value={retellPostcallUrl} />
-        <p className="mt-3 text-xs text-neutral-500">
-          Inbound SMS replies and email unsubscribes are handled inside GHL natively.
-          Inbound voice goes to the Retell-managed phone number directly.
-        </p>
       </Section>
 
       <Section title="Integrations">
@@ -65,38 +74,6 @@ export default function ConfigPage() {
               <span className={i.set ? "text-green-700" : "text-red-600"}>
                 {i.set ? `set${i.value && !i.value.startsWith("•") ? ` (${i.value})` : ""} ✓` : "not set"}
               </span>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section title="Campaign cadence">
-        <div className="text-sm text-neutral-700">
-          <p>Max attempts: <b>{CAMPAIGN.maxAttempts}</b></p>
-          <p>Quiet hours: {CAMPAIGN.quietHours.start}–{CAMPAIGN.quietHours.end} (days: {CAMPAIGN.quietHours.days.join(",")})</p>
-          <p>Spread hours: {CAMPAIGN.spreadHours ? "on" : "off"}</p>
-        </div>
-        <ol className="mt-3 space-y-1 text-sm">
-          {CAMPAIGN.cadence.map((s, i) => (
-            <li key={i} className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
-              <span className="font-medium uppercase">{s.channel}</span> — <code className="text-xs">{JSON.stringify(stripChannel(s))}</code>
-            </li>
-          ))}
-        </ol>
-      </Section>
-
-      <Section title="Templates">
-        <ul className="space-y-3">
-          {Object.entries(TEMPLATES).map(([id, t]) => (
-            <li key={id} className="rounded-md border border-neutral-200 p-3 text-sm">
-              <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{id}</div>
-              {t.sms && <pre className="mt-1 whitespace-pre-wrap text-neutral-700">{t.sms}</pre>}
-              {t.email && (
-                <div className="mt-1">
-                  <div className="text-xs text-neutral-500">Subject: <b>{t.email.subject}</b></div>
-                  <pre className="mt-1 whitespace-pre-wrap text-neutral-700">{t.email.html}</pre>
-                </div>
-              )}
             </li>
           ))}
         </ul>
@@ -121,9 +98,4 @@ function UrlRow({ label, value }: { label: string; value: string }) {
       <code className="mt-1 block break-all rounded bg-neutral-100 px-3 py-2 text-xs">{value || "(set NEXT_PUBLIC_APP_URL)"}</code>
     </div>
   );
-}
-
-function stripChannel(s: Record<string, unknown>) {
-  const { channel: _channel, ...rest } = s;
-  return rest;
 }

@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { DateTime } from "luxon";
-import { APP, CAMPAIGN } from "@/config";
+import { APP } from "@/config";
 import { getContact, listNotes } from "@/lib/ghl/client";
 import { leadStateFromContact } from "@/lib/state";
+import { getCampaign } from "@/lib/runtime-config";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ con
   const contact = await getContact(contactId);
   if (!contact) notFound();
 
+  const [campaign, notes] = await Promise.all([
+    getCampaign(),
+    listNotes(contactId, 50).catch(() => []),
+  ]);
   const lead = leadStateFromContact(contact);
-  const notes = await listNotes(contactId, 50).catch(() => []);
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Lead";
   const next = lead.nextAttemptAt
@@ -28,7 +32,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ con
           Status: <span className="capitalize">{lead.status.replace("_", " ")}</span> · Last outcome: {lead.lastOutcome ?? "—"}
         </p>
         <p className="mt-1 text-sm text-neutral-500">
-          Step {lead.stepIndex + 1}/{CAMPAIGN.cadence.length} · Next at {next} · Voice {lead.attempts.voice}, SMS {lead.attempts.sms}, Email {lead.attempts.email}
+          Step {lead.stepIndex + 1}/{campaign.cadence.length} · Next at {next} · Voice {lead.attempts.voice}, SMS {lead.attempts.sms}, Email {lead.attempts.email}
         </p>
       </header>
 

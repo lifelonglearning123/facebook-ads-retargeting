@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { APP, CAMPAIGN } from "@/config";
+import { APP } from "@/config";
 import { loadLeadState, markEngaged, markExhausted, recordAttempt, writeLeadState } from "@/lib/state";
 import { computeNextStep } from "@/lib/cadence/advance";
 import { nextAttemptAt } from "@/lib/cadence/schedule";
 import { resolveLeadTimezone } from "@/lib/timezone";
+import { getCampaign } from "@/lib/runtime-config";
 
 export const runtime = "nodejs";
 
@@ -51,7 +52,8 @@ export async function POST(req: Request) {
   }
 
   // Advance to next step
-  const result = computeNextStep({ ...lead, lastOutcome: outcome, attempts: { ...lead.attempts } }, new Date());
+  const campaign = await getCampaign();
+  const result = computeNextStep(campaign, { ...lead, lastOutcome: outcome, attempts: { ...lead.attempts } }, new Date());
   if (!result.scheduled) {
     await markExhausted(contactId);
     return NextResponse.json({ ok: true, outcome, terminal: true });
@@ -65,8 +67,8 @@ export async function POST(req: Request) {
   const fireAt = nextAttemptAt(result.step, {
     baseline: new Date(),
     leadTz,
-    quietHours: CAMPAIGN.quietHours,
-    spread: CAMPAIGN.spreadHours,
+    quietHours: campaign.quietHours,
+    spread: campaign.spreadHours,
   });
 
   await writeLeadState(contactId, { stepIndex: result.stepIndex, nextAttemptAt: fireAt });

@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { DateTime } from "luxon";
-import { APP, CAMPAIGN } from "@/config";
+import { APP } from "@/config";
 import { searchByTag } from "@/lib/ghl/client";
 import { leadStateFromContact } from "@/lib/state";
+import { getCampaign } from "@/lib/runtime-config";
 
 export const dynamic = "force-dynamic";
 
 export default async function QueuePage() {
-  const contacts = await searchByTag({ tag: APP.ghl.activeTag, pageLimit: 100 }).catch(() => []);
+  const [contacts, campaign] = await Promise.all([
+    searchByTag({ tag: APP.ghl.activeTag, pageLimit: 100 }).catch(() => []),
+    getCampaign(),
+  ]);
   const leads = contacts.map(leadStateFromContact).sort((a, b) => {
     const at = a.nextAttemptAt?.getTime() ?? 0;
     const bt = b.nextAttemptAt?.getTime() ?? 0;
@@ -20,7 +24,7 @@ export default async function QueuePage() {
         <div>
           <h1 className="text-2xl font-semibold">Live queue</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            {leads.length} active · max {CAMPAIGN.maxAttempts} attempts · agency tz {APP.agency.timezone}
+            {leads.length} active · max {campaign.maxAttempts} attempts · agency tz {APP.agency.timezone}
           </p>
         </div>
         <span className="text-xs text-neutral-400">
@@ -54,7 +58,7 @@ export default async function QueuePage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{l.phone}</td>
                   <td className="px-4 py-3 capitalize">{l.status.replace("_", " ")}</td>
-                  <td className="px-4 py-3">{l.stepIndex + 1}/{CAMPAIGN.cadence.length}</td>
+                  <td className="px-4 py-3">{l.stepIndex + 1}/{campaign.cadence.length}</td>
                   <td className="px-4 py-3">{l.attempts.voice}/{l.attempts.sms}/{l.attempts.email}</td>
                   <td className="px-4 py-3 text-xs">{next}</td>
                   <td className="px-4 py-3 text-neutral-600">{l.lastOutcome ?? "—"}</td>

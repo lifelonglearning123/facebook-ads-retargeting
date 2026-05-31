@@ -144,6 +144,54 @@ export async function sendEmailViaGhl(opts: SendEmailViaGhlOpts): Promise<{ mess
   return { messageId: data.messageId };
 }
 
+// ─── Custom Values (location-level key/value, used for runtime config) ───
+
+export interface GhlCustomValue {
+  id: string;
+  name: string;
+  value: string;
+  key?: string;
+  fieldKey?: string;
+  locationId?: string;
+}
+
+async function listCustomValues(): Promise<GhlCustomValue[]> {
+  const data = await req<{ customValues: GhlCustomValue[] }>(
+    `/locations/${APP.ghl.locationId}/customValues`
+  );
+  return data.customValues ?? [];
+}
+
+/** Returns the raw `value` for a named custom value, or null if not found. */
+export async function getCustomValue(name: string): Promise<string | null> {
+  try {
+    const all = await listCustomValues();
+    const lower = name.toLowerCase();
+    const hit = all.find((v) => v.name?.toLowerCase() === lower);
+    return hit?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Upsert a custom value by name. Creates if missing, updates if present. */
+export async function upsertCustomValue(name: string, value: string): Promise<void> {
+  const all = await listCustomValues().catch(() => [] as GhlCustomValue[]);
+  const lower = name.toLowerCase();
+  const existing = all.find((v) => v.name?.toLowerCase() === lower);
+  if (existing) {
+    await req(`/locations/${APP.ghl.locationId}/customValues/${existing.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, value }),
+    });
+    return;
+  }
+  await req(`/locations/${APP.ghl.locationId}/customValues`, {
+    method: "POST",
+    body: JSON.stringify({ name, value }),
+  });
+}
+
 // ─── Custom fields + tags (provisioning) ─────────────────────────────────
 
 export interface GhlCustomField {

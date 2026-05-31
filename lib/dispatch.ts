@@ -1,4 +1,4 @@
-import { APP, CAMPAIGN, TEMPLATES } from "@/config";
+import { APP, TEMPLATES, type CampaignConfig } from "@/config";
 import { type LeadState, markExhausted, recordAttempt, writeLeadState } from "@/lib/state";
 import { placeVoiceCall } from "@/lib/channels/voice";
 import { renderTemplate, sendSms } from "@/lib/channels/sms";
@@ -11,11 +11,9 @@ import { resolveLeadTimezone } from "@/lib/timezone";
  * Fire the cadence step at lead.stepIndex. For voice, places the call (the
  * post-call webhook will advance the cadence). For SMS/email, sends the
  * message and schedules the next step.
- *
- * Safe to call from anywhere — intake, /api/ghl/start, /api/tick.
  */
-export async function fireStep(lead: LeadState): Promise<void> {
-  const step = CAMPAIGN.cadence[lead.stepIndex];
+export async function fireStep(campaign: CampaignConfig, lead: LeadState): Promise<void> {
+  const step = campaign.cadence[lead.stepIndex];
   if (!step) {
     await markExhausted(lead.contactId);
     return;
@@ -46,7 +44,7 @@ export async function fireStep(lead: LeadState): Promise<void> {
     const tplId = (step as { template_id: string }).template_id;
     const tpl = TEMPLATES[tplId]?.sms;
     if (!tpl) {
-      await scheduleNextStep(lead, `missing_template:${tplId}`);
+      await scheduleNextStep(campaign, lead, `missing_template:${tplId}`);
       return;
     }
     const body = renderTemplate(tpl, vars);
@@ -57,19 +55,19 @@ export async function fireStep(lead: LeadState): Promise<void> {
       attempts: { sms: lead.attempts.sms + 1 },
     });
     await recordAttempt(lead.contactId, { channel: "sms", outcome: "sent", bodySnapshot: body });
-    await scheduleNextStep(lead);
+    await scheduleNextStep(campaign, lead);
     return;
   }
 
   if (step.channel === "email") {
     if (!lead.email) {
-      await scheduleNextStep(lead, "skipped_no_email_address");
+      await scheduleNextStep(campaign, lead, "skipped_no_email_address");
       return;
     }
     const tplId = (step as { template_id: string }).template_id;
     const tpl = TEMPLATES[tplId]?.email;
     if (!tpl) {
-      await scheduleNextStep(lead, `missing_template:${tplId}`);
+      await scheduleNextStep(campaign, lead, `missing_template:${tplId}`);
       return;
     }
     const subject = renderTemplate(tpl.subject, vars);
@@ -81,18 +79,13 @@ export async function fireStep(lead: LeadState): Promise<void> {
       attempts: { email: lead.attempts.email + 1 },
     });
     await recordAttempt(lead.contactId, { channel: "email", outcome: "sent", bodySnapshot: subject });
-    await scheduleNextStep(lead);
+    await scheduleNextStep(campaign, lead);
     return;
   }
 }
 
-/**
- * After a non-voice step completes (or is skipped), compute the next due
- * step and write next_attempt_at. Voice steps don't call this directly —
- * the Retell post-call webhook does it after the call ends.
- */
-export async function scheduleNextStep(lead: LeadState, lastOutcome?: string): Promise<void> {
-  const result = computeNextStep(lead, new Date());
+export async function scheduleNextStep(campaign: CampaignConfig, lead: LeadState, lastOutcome?: string): Promise<void> {
+  const result = computeNextStep(campaign, lead, new Date());
   if (!result.scheduled) {
     await markExhausted(lead.contactId);
     return;
@@ -105,8 +98,8 @@ export async function scheduleNextStep(lead: LeadState, lastOutcome?: string): P
   const fireAt = nextAttemptAt(result.step, {
     baseline: new Date(),
     leadTz,
-    quietHours: CAMPAIGN.quietHours,
-    spread: CAMPAIGN.spreadHours,
+    quietHours: campaign.quietHours,
+    spread: campaign.spreadHours,
   });
   await writeLeadState(lead.contactId, {
     stepIndex: result.stepIndex,

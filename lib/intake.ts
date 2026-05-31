@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
-import { APP, CAMPAIGN } from "@/config";
+import { APP, type CampaignConfig } from "@/config";
 import { removeTag, searchByTag } from "@/lib/ghl/client";
 import { enterCadence, leadStateFromContact, loadLeadState, recordAttempt } from "@/lib/state";
 import { pickFirstStep } from "@/lib/cadence/advance";
@@ -15,16 +15,11 @@ export interface IntakeResult {
 }
 
 /**
- * Polling-based lead intake. Looks for any GHL contact tagged with
- * APP.ghl.sourceTag ("ai-callback"), starts a cadence for each, then
- * removes the trigger tag so the same contact isn't picked up twice.
- *
- * This means the agency doesn't have to build a GHL workflow — they just
- * tag a contact, and our /api/tick will pick it up within ≤60 seconds.
- * For instant pickup, the /api/ghl/start webhook endpoint is still
- * available as an opt-in.
+ * Polling-based lead intake. Picks up any GHL contact tagged
+ * APP.ghl.sourceTag ("ai-callback"), enters them into the cadence, fires
+ * the first step inline if due.
  */
-export async function runIntake(): Promise<IntakeResult> {
+export async function runIntake(campaign: CampaignConfig): Promise<IntakeResult> {
   const result: IntakeResult = { scanned: 0, started: 0, skipped: 0, failed: 0 };
 
   const contacts = await searchByTag({ tag: APP.ghl.sourceTag, pageLimit: 100 }).catch(() => []);
@@ -33,14 +28,12 @@ export async function runIntake(): Promise<IntakeResult> {
   for (const contact of contacts) {
     const lead = leadStateFromContact(contact);
 
-    // Already moved into cadence or terminal — just clean the trigger tag.
     if (["in_progress", "engaged", "exhausted", "stopped"].includes(lead.status)) {
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});
       result.skipped++;
       continue;
     }
 
-    // Validate phone
     const phone = lead.phone ? parsePhoneNumberFromString(lead.phone, "GB") : null;
     if (!phone?.isValid()) {
       await recordAttempt(contact.id, { channel: "voice", outcome: "intake_skipped:invalid_phone" }).catch(() => {});
@@ -49,7 +42,7 @@ export async function runIntake(): Promise<IntakeResult> {
       continue;
     }
 
-    const first = pickFirstStep();
+    const first = pickFirstStep(campaign);
     if (!first) {
       await recordAttempt(contact.id, { channel: "voice", outcome: "intake_skipped:empty_cadence" }).catch(() => {});
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});
@@ -66,22 +59,17 @@ export async function runIntake(): Promise<IntakeResult> {
       const fireAt = nextAttemptAt(first.step, {
         baseline: new Date(),
         leadTz,
-        quietHours: CAMPAIGN.quietHours,
-        spread: CAMPAIGN.spreadHours,
+        quietHours: campaign.quietHours,
+        spread: campaign.spreadHours,
       });
-      // Consent is assumed (FB Lead Form gave it upstream) — pass true so any
-      // future re-introduction of consent gating still works.
       await enterCadence(contact.id, first.stepIndex, fireAt, { sms: true, email: true });
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});
 
-      // If the first step is due now (within 30s), fire it inline so we
-      // don't wait for the next tick. Reloads the lead so we have the
-      // freshly-written ai_status, attempts, etc.
       const isDueNow = fireAt.getTime() <= Date.now() + 30_000;
       if (isDueNow) {
         const refreshed = await loadLeadState(contact.id);
         if (refreshed) {
-          await fireStep({
+          await fireStep(campaign, {
             ...refreshed,
             phone: phone.number,
             timezone: refreshed.timezone ?? leadTz,
