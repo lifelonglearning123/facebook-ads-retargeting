@@ -5,7 +5,9 @@ import { resolveLeadTimezone } from "@/lib/timezone";
 import { nextAttemptAt } from "@/lib/cadence/schedule";
 import { pickFirstStep } from "@/lib/cadence/advance";
 import { APP, CAMPAIGN } from "@/config";
-import { enterCadence, recordAttempt } from "@/lib/state";
+import { enterCadence, loadLeadState, recordAttempt } from "@/lib/state";
+import { fireStep } from "@/lib/dispatch";
+import { removeTag } from "@/lib/ghl/client";
 
 export const runtime = "nodejs";
 
@@ -50,10 +52,27 @@ export async function POST(req: Request) {
   });
 
   await enterCadence(p.contact_id, first.stepIndex, fireAt, { sms: smsConsent, email: emailConsent });
-  await recordAttempt(p.contact_id, {
-    channel: first.step.channel,
-    outcome: `queued_step_${first.stepIndex}`,
-  });
+  // Best-effort: clear the trigger tag so polling intake doesn't re-process.
+  await removeTag(p.contact_id, APP.ghl.sourceTag).catch(() => {});
+
+  const isDueNow = fireAt.getTime() <= Date.now() + 30_000;
+  let fired = false;
+  if (isDueNow) {
+    const refreshed = await loadLeadState(p.contact_id);
+    if (refreshed) {
+      await fireStep({
+        ...refreshed,
+        phone: phone.number,
+        timezone: refreshed.timezone ?? leadTz,
+      });
+      fired = true;
+    }
+  } else {
+    await recordAttempt(p.contact_id, {
+      channel: first.step.channel,
+      outcome: `queued_step_${first.stepIndex}`,
+    });
+  }
 
   return NextResponse.json({
     ok: true,
@@ -61,5 +80,6 @@ export async function POST(req: Request) {
     step_index: first.stepIndex,
     channel: first.step.channel,
     next_attempt_at: fireAt.toISOString(),
+    fired_inline: fired,
   });
 }

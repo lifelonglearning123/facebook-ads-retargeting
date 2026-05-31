@@ -1,10 +1,11 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { APP, CAMPAIGN } from "@/config";
 import { removeTag, searchByTag } from "@/lib/ghl/client";
-import { enterCadence, leadStateFromContact, recordAttempt } from "@/lib/state";
+import { enterCadence, leadStateFromContact, loadLeadState, recordAttempt } from "@/lib/state";
 import { pickFirstStep } from "@/lib/cadence/advance";
 import { nextAttemptAt } from "@/lib/cadence/schedule";
 import { resolveLeadTimezone } from "@/lib/timezone";
+import { fireStep } from "@/lib/dispatch";
 
 export interface IntakeResult {
   scanned: number;
@@ -73,10 +74,27 @@ export async function runIntake(): Promise<IntakeResult> {
         email: lead.emailConsent,
       });
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});
-      await recordAttempt(contact.id, {
-        channel: first.step.channel,
-        outcome: `intake_queued_step_${first.stepIndex}`,
-      }).catch(() => {});
+
+      // If the first step is due now (within 30s), fire it inline so we
+      // don't wait for the next tick. Reloads the lead so we have the
+      // freshly-written ai_status, attempts, etc.
+      const isDueNow = fireAt.getTime() <= Date.now() + 30_000;
+      if (isDueNow) {
+        const refreshed = await loadLeadState(contact.id);
+        if (refreshed) {
+          await fireStep({
+            ...refreshed,
+            phone: phone.number,
+            timezone: refreshed.timezone ?? leadTz,
+          });
+        }
+      } else {
+        await recordAttempt(contact.id, {
+          channel: first.step.channel,
+          outcome: `intake_queued_step_${first.stepIndex}`,
+        }).catch(() => {});
+      }
+
       result.started++;
     } catch (err) {
       await recordAttempt(contact.id, {

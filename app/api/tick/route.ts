@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
-import { APP, CAMPAIGN, TEMPLATES } from "@/config";
+import { APP } from "@/config";
 import { searchByTag } from "@/lib/ghl/client";
-import { leadStateFromContact, markEngaged, markExhausted, recordAttempt, writeLeadState, type LeadState } from "@/lib/state";
-import { placeVoiceCall } from "@/lib/channels/voice";
-import { renderTemplate, sendSms } from "@/lib/channels/sms";
-import { sendEmail } from "@/lib/channels/email";
-import { computeNextStep } from "@/lib/cadence/advance";
-import { resolveLeadTimezone } from "@/lib/timezone";
-import { nextAttemptAt } from "@/lib/cadence/schedule";
+import { leadStateFromContact, recordAttempt } from "@/lib/state";
+import { fireStep } from "@/lib/dispatch";
 import { runIntake } from "@/lib/intake";
 
 export const runtime = "nodejs";
@@ -16,11 +11,12 @@ export const maxDuration = 60;
 const NOW_TOLERANCE_MS = 30_000;
 
 /**
- * Vercel cron hits this every minute. Pulls every "ai-active" contact from
- * GHL, checks their ai_next_attempt_at, and fires steps that are due.
+ * Vercel cron hits this every minute.
  *
- * At ≤100 leads/day a single search page (100 contacts) is comfortably
- * sufficient. No DB, no queue: GHL holds all the per-lead state.
+ * 1) Intake pass: pull any newly-tagged "ai-callback" contacts into the
+ *    cadence, fire the first step immediately if it's due.
+ * 2) Dispatch pass: for contacts already in cadence, fire any step whose
+ *    next_attempt_at has elapsed.
  */
 export async function GET(req: Request) {
   const secret = req.headers.get("X-Cron-Secret") ?? new URL(req.url).searchParams.get("secret");
@@ -28,14 +24,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "unauthorised" }, { status: 401 });
   }
 
-  // 1) Intake pass: pull any newly-tagged "ai-callback" contacts into the cadence.
-  //    Cheap at low volume; means the agency doesn't need to build a GHL workflow.
-  const intake = await runIntake().catch((err) => ({ scanned: 0, started: 0, skipped: 0, failed: 1, error: String(err) }));
+  const intake = await runIntake().catch((err) => ({
+    scanned: 0, started: 0, skipped: 0, failed: 1, error: String(err),
+  }));
 
-  // 2) Dispatch pass: fire due steps for contacts already in the cadence.
   const contacts = await searchByTag({ tag: APP.ghl.activeTag, pageLimit: 100 });
   const now = new Date();
-
   let fired = 0;
   let skipped = 0;
   let failed = 0;
@@ -45,7 +39,8 @@ export async function GET(req: Request) {
 
     if (!lead.nextAttemptAt) { skipped++; continue; }
     if (lead.nextAttemptAt.getTime() > now.getTime() + NOW_TOLERANCE_MS) { skipped++; continue; }
-    if (lead.status === "stopped" || lead.status === "engaged" || lead.status === "exhausted") { skipped++; continue; }
+    if (["stopped", "engaged", "exhausted"].includes(lead.status)) { skipped++; continue; }
+    if (lead.activeCallId) { skipped++; continue; }   // call already in flight
 
     try {
       await fireStep(lead);
@@ -55,7 +50,7 @@ export async function GET(req: Request) {
       await recordAttempt(lead.contactId, {
         channel: "voice",
         outcome: `error:${String(err).slice(0, 200)}`,
-      });
+      }).catch(() => {});
     }
   }
 
@@ -64,120 +59,5 @@ export async function GET(req: Request) {
     intake,
     dispatch: { scanned: contacts.length, fired, skipped, failed },
     at: now.toISOString(),
-  });
-}
-
-async function fireStep(lead: LeadState): Promise<void> {
-  const step = CAMPAIGN.cadence[lead.stepIndex];
-  if (!step) {
-    await markExhausted(lead.contactId);
-    return;
-  }
-
-  const vars = {
-    first_name: lead.firstName ?? "",
-    last_name: lead.lastName ?? "",
-    full_name: [lead.firstName, lead.lastName].filter(Boolean).join(" "),
-    agency_name: APP.branding.name,
-  };
-
-  if (step.channel === "voice") {
-    const { call_id } = await placeVoiceCall({
-      toNumber: lead.phone,
-      metadata: { contact_id: lead.contactId, step_index: lead.stepIndex },
-    });
-    await writeLeadState(lead.contactId, {
-      activeCallId: call_id,
-      lastAttemptAt: new Date(),
-      attempts: { voice: lead.attempts.voice + 1 },
-    });
-    await recordAttempt(lead.contactId, { channel: "voice", outcome: "placed" });
-    // Cadence advances when the Retell post-call webhook fires.
-    return;
-  }
-
-  if (step.channel === "sms") {
-    if (!lead.smsConsent) {
-      await scheduleNext(lead, "skipped_no_sms_consent");
-      return;
-    }
-    const tplId = (step as { template_id: string }).template_id;
-    const tpl = TEMPLATES[tplId]?.sms;
-    if (!tpl) {
-      await scheduleNext(lead, `missing_template:${tplId}`);
-      return;
-    }
-    const body = renderTemplate(tpl, vars);
-    await sendSms({ contactId: lead.contactId, body });
-    await writeLeadState(lead.contactId, {
-      lastAttemptAt: new Date(),
-      lastOutcome: "sms_sent",
-      attempts: { sms: lead.attempts.sms + 1 },
-    });
-    await recordAttempt(lead.contactId, { channel: "sms", outcome: "sent", bodySnapshot: body });
-    await scheduleNext(lead);
-    return;
-  }
-
-  if (step.channel === "email") {
-    if (!lead.emailConsent || !lead.email) {
-      await scheduleNext(lead, "skipped_no_email_consent_or_address");
-      return;
-    }
-    const tplId = (step as { template_id: string }).template_id;
-    const tpl = TEMPLATES[tplId]?.email;
-    if (!tpl) {
-      await scheduleNext(lead, `missing_template:${tplId}`);
-      return;
-    }
-    const subject = renderTemplate(tpl.subject, vars);
-    const html = renderTemplate(tpl.html, vars);
-    await sendEmail({ contactId: lead.contactId, subject, html });
-    await writeLeadState(lead.contactId, {
-      lastAttemptAt: new Date(),
-      lastOutcome: "email_sent",
-      attempts: { email: lead.attempts.email + 1 },
-    });
-    await recordAttempt(lead.contactId, { channel: "email", outcome: "sent", bodySnapshot: subject });
-    await scheduleNext(lead);
-    return;
-  }
-}
-
-async function scheduleNext(lead: LeadState, lastOutcome?: string): Promise<void> {
-  // Bump the lead's attempt counters for cadence computation
-  const refreshed: LeadState = {
-    ...lead,
-    attempts: {
-      voice: lead.attempts.voice,
-      sms: lead.attempts.sms + (lead.lastOutcome === "sms_sent" ? 0 : 0),
-      email: lead.attempts.email + (lead.lastOutcome === "email_sent" ? 0 : 0),
-    },
-  };
-
-  const result = computeNextStep(refreshed, new Date());
-  if (!result.scheduled) {
-    await markExhausted(lead.contactId);
-    return;
-  }
-
-  const leadTz = resolveLeadTimezone({
-    ghlTimezone: lead.timezone,
-    phoneE164: lead.phone,
-    agencyTimezone: APP.agency.timezone,
-  });
-
-  // Recompute with explicit tz
-  const fireAt = nextAttemptAt(result.step, {
-    baseline: new Date(),
-    leadTz,
-    quietHours: CAMPAIGN.quietHours,
-    spread: CAMPAIGN.spreadHours,
-  });
-
-  await writeLeadState(lead.contactId, {
-    stepIndex: result.stepIndex,
-    nextAttemptAt: fireAt,
-    ...(lastOutcome ? { lastOutcome } : {}),
   });
 }

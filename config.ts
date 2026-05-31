@@ -99,11 +99,17 @@ export const CAMPAIGN: CampaignConfig = {
   quietHours: { start: "09:00", end: "20:00", days: [1, 2, 3, 4, 5, 6, 7] },
   spreadHours: true,
   cadence: [
-    { channel: "voice", delay: "1min" },
+    // Step 0: fire immediately — FB lead has just consented, strike while hot
+    { channel: "voice", delay: "0min" },
+    // Step 1: if they didn't pick up, try again in 5 min
     { channel: "voice", delay: "5min" },
+    // Step 2: SMS nudge after 10 more min
     { channel: "sms", delay: "10min", template_id: "missed_call" },
+    // Step 3: one more call 30 min after the SMS
     { channel: "voice", delay: "30min" },
+    // Step 4: email follow-up the next morning
     { channel: "email", after: "1d", at: "09:00", template_id: "day_two_followup" },
+    // Step 5: final call attempt the next business day
     { channel: "voice", rule: "next_business_day", random_between: ["10:00", "17:00"] },
   ],
 };
