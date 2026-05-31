@@ -35,10 +35,23 @@ export default function ConfigPage() {
         <RetellSetupButton />
       </Section>
 
-      <Section title="Webhook URLs to paste into GHL / Retell">
-        <UrlRow label="GHL → Start workflow webhook" value={startUrl} />
-        <UrlRow label="GHL → Stop workflow webhook" value={stopUrl} />
-        <UrlRow label="Retell → Post-call webhook" value={retellPostcallUrl} />
+      <Section title="How leads enter the cadence">
+        <div className="space-y-3 text-sm text-neutral-700">
+          <p>
+            <b>Default (no workflow needed):</b> add the <code>ai-callback</code> tag to any contact in GHL.
+            Our <code>/api/tick</code> cron picks it up within ≤60 seconds, validates the phone, and starts the cadence.
+          </p>
+          <p>
+            <b>Optional (instant trigger):</b> if you want the first step queued immediately, set up a GHL workflow
+            with trigger <i>Contact Tag Added → ai-callback</i> and a webhook action pointing at the URL below. Skip this if 60s of intake latency is fine.
+          </p>
+        </div>
+      </Section>
+
+      <Section title="Webhook URLs (optional integrations)">
+        <UrlRow label="GHL → Start workflow webhook (optional)" value={startUrl} />
+        <UrlRow label="GHL → Stop workflow webhook (optional, e.g. on appointment booked)" value={stopUrl} />
+        <UrlRow label="Retell → Post-call webhook (auto-configured by setup button above)" value={retellPostcallUrl} />
         <p className="mt-3 text-xs text-neutral-500">
           Inbound SMS replies and email unsubscribes are handled inside GHL natively.
           Inbound voice goes to the Retell-managed phone number directly.

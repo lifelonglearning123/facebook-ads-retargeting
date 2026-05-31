@@ -51,11 +51,13 @@ Paste into Vercel env var `GHL_PIT`. Paste the location ID into `GHL_LOCATION_ID
 
 SMS and email go through GHL's conversations API — no Twilio or Resend creds needed.
 
-## 4. Build the GHL workflows
+## 4. (Optional) Build the GHL workflows
 
-Open the dashboard's `/config` page — it shows the exact webhook URLs.
+**You can skip this section entirely.** By default our app polls GHL every minute and picks up any contact tagged `ai-callback`, so workflows are not required. Tag a contact and it'll enter the cadence within ≤60 seconds.
 
-### Workflow A — Start calling
+If you want **instant** pickup (zero-second latency) or you want the stop event triggered from an appointment booking, build the workflows below. Webhook URLs are shown on the dashboard's `/config` page.
+
+### Workflow A (optional) — Start calling instantly
 
 1. Automation → Workflows → Create.
 2. Trigger: **Contact Tag Added** → tag `ai-callback`.
@@ -74,7 +76,7 @@ Open the dashboard's `/config` page — it shows the exact webhook URLs.
    ```
 4. Save and publish.
 
-### Workflow B — Stop calling
+### Workflow B (optional but recommended) — Stop calling on appointment booked
 
 1. New workflow.
 2. Trigger: **Appointment Booked** OR **Contact Tag Added** with tag `stop-ai-callback`.

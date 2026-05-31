@@ -8,6 +8,7 @@ import { sendEmail } from "@/lib/channels/email";
 import { computeNextStep } from "@/lib/cadence/advance";
 import { resolveLeadTimezone } from "@/lib/timezone";
 import { nextAttemptAt } from "@/lib/cadence/schedule";
+import { runIntake } from "@/lib/intake";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,6 +28,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "unauthorised" }, { status: 401 });
   }
 
+  // 1) Intake pass: pull any newly-tagged "ai-callback" contacts into the cadence.
+  //    Cheap at low volume; means the agency doesn't need to build a GHL workflow.
+  const intake = await runIntake().catch((err) => ({ scanned: 0, started: 0, skipped: 0, failed: 1, error: String(err) }));
+
+  // 2) Dispatch pass: fire due steps for contacts already in the cadence.
   const contacts = await searchByTag({ tag: APP.ghl.activeTag, pageLimit: 100 });
   const now = new Date();
 
@@ -53,7 +59,12 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, scanned: contacts.length, fired, skipped, failed, at: now.toISOString() });
+  return NextResponse.json({
+    ok: true,
+    intake,
+    dispatch: { scanned: contacts.length, fired, skipped, failed },
+    at: now.toISOString(),
+  });
 }
 
 async function fireStep(lead: LeadState): Promise<void> {
