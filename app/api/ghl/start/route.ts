@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
-import { GhlStartPayloadSchema, toBool } from "@/lib/ghl/webhook";
+import { GhlStartPayloadSchema } from "@/lib/ghl/webhook";
 import { resolveLeadTimezone } from "@/lib/timezone";
 import { nextAttemptAt } from "@/lib/cadence/schedule";
 import { pickFirstStep } from "@/lib/cadence/advance";
@@ -30,12 +30,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_phone" }, { status: 400 });
   }
 
-  const smsConsent = toBool(p.sms_consent);
-  const emailConsent = toBool(p.email_consent);
-
-  const first = pickFirstStep({ sms: smsConsent, email: emailConsent });
+  const first = pickFirstStep();
   if (!first) {
-    return NextResponse.json({ ok: true, contact_id: p.contact_id, scheduled: false, reason: "no_consented_step" });
+    return NextResponse.json({ ok: true, contact_id: p.contact_id, scheduled: false, reason: "empty_cadence" });
   }
 
   const leadTz = resolveLeadTimezone({
@@ -51,7 +48,8 @@ export async function POST(req: Request) {
     spread: CAMPAIGN.spreadHours,
   });
 
-  await enterCadence(p.contact_id, first.stepIndex, fireAt, { sms: smsConsent, email: emailConsent });
+  // Consent assumed (FB Lead Form gave it upstream).
+  await enterCadence(p.contact_id, first.stepIndex, fireAt, { sms: true, email: true });
   // Best-effort: clear the trigger tag so polling intake doesn't re-process.
   await removeTag(p.contact_id, APP.ghl.sourceTag).catch(() => {});
 

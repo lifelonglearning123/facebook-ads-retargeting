@@ -43,10 +43,6 @@ export async function fireStep(lead: LeadState): Promise<void> {
   }
 
   if (step.channel === "sms") {
-    if (!lead.smsConsent) {
-      await scheduleNextStep(lead, "skipped_no_sms_consent");
-      return;
-    }
     const tplId = (step as { template_id: string }).template_id;
     const tpl = TEMPLATES[tplId]?.sms;
     if (!tpl) {
@@ -66,8 +62,8 @@ export async function fireStep(lead: LeadState): Promise<void> {
   }
 
   if (step.channel === "email") {
-    if (!lead.emailConsent || !lead.email) {
-      await scheduleNextStep(lead, "skipped_no_email_consent_or_address");
+    if (!lead.email) {
+      await scheduleNextStep(lead, "skipped_no_email_address");
       return;
     }
     const tplId = (step as { template_id: string }).template_id;

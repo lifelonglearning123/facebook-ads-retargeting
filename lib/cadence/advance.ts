@@ -1,7 +1,7 @@
 import { CAMPAIGN } from "@/config";
 import type { LeadState } from "@/lib/state";
 import { nextAttemptAt } from "./schedule";
-import type { Cadence, CadenceStep } from "./types";
+import type { CadenceStep } from "./types";
 
 interface AdvanceResult {
   scheduled: false;
@@ -24,8 +24,8 @@ export function computeNextStep(lead: LeadState, baseline: Date, recentAttemptHo
   const totalAttempts = lead.attempts.voice + lead.attempts.sms + lead.attempts.email;
   if (totalAttempts >= CAMPAIGN.maxAttempts) return { scheduled: false, reason: "max_attempts" };
 
-  const next = pickNextStep(cadence, lead.stepIndex, { sms: lead.smsConsent, email: lead.emailConsent });
-  if (next === -1) return { scheduled: false, reason: "cadence_exhausted" };
+  const next = lead.stepIndex + 1;
+  if (next >= cadence.length) return { scheduled: false, reason: "cadence_exhausted" };
 
   const step = cadence[next];
   const leadTz = lead.timezone ?? "Europe/London";
@@ -40,23 +40,8 @@ export function computeNextStep(lead: LeadState, baseline: Date, recentAttemptHo
   return { scheduled: true, stepIndex: next, step, nextAttemptAt: fireAt };
 }
 
-function pickNextStep(cadence: Cadence, fromIdx: number, consent: { sms: boolean; email: boolean }): number {
-  for (let i = fromIdx + 1; i < cadence.length; i++) {
-    const step = cadence[i];
-    if (step.channel === "voice") return i;
-    if (step.channel === "sms" && consent.sms) return i;
-    if (step.channel === "email" && consent.email) return i;
-  }
-  return -1;
-}
-
-/** Pick the first step the lead can take given consent flags. Used at intake. */
-export function pickFirstStep(consent: { sms: boolean; email: boolean }): { stepIndex: number; step: CadenceStep } | null {
-  for (let i = 0; i < CAMPAIGN.cadence.length; i++) {
-    const step = CAMPAIGN.cadence[i];
-    if (step.channel === "voice") return { stepIndex: i, step };
-    if (step.channel === "sms" && consent.sms) return { stepIndex: i, step };
-    if (step.channel === "email" && consent.email) return { stepIndex: i, step };
-  }
-  return null;
+/** Pick the first step. Used at intake. */
+export function pickFirstStep(): { stepIndex: number; step: CadenceStep } | null {
+  const step = CAMPAIGN.cadence[0];
+  return step ? { stepIndex: 0, step } : null;
 }

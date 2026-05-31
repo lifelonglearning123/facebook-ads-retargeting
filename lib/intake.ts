@@ -49,9 +49,9 @@ export async function runIntake(): Promise<IntakeResult> {
       continue;
     }
 
-    const first = pickFirstStep({ sms: lead.smsConsent, email: lead.emailConsent });
+    const first = pickFirstStep();
     if (!first) {
-      await recordAttempt(contact.id, { channel: "voice", outcome: "intake_skipped:no_consented_step" }).catch(() => {});
+      await recordAttempt(contact.id, { channel: "voice", outcome: "intake_skipped:empty_cadence" }).catch(() => {});
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});
       result.skipped++;
       continue;
@@ -69,10 +69,9 @@ export async function runIntake(): Promise<IntakeResult> {
         quietHours: CAMPAIGN.quietHours,
         spread: CAMPAIGN.spreadHours,
       });
-      await enterCadence(contact.id, first.stepIndex, fireAt, {
-        sms: lead.smsConsent,
-        email: lead.emailConsent,
-      });
+      // Consent is assumed (FB Lead Form gave it upstream) — pass true so any
+      // future re-introduction of consent gating still works.
+      await enterCadence(contact.id, first.stepIndex, fireAt, { sms: true, email: true });
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});
 
       // If the first step is due now (within 30s), fire it inline so we
