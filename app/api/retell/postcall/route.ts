@@ -1,145 +1,77 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
-import { advanceCadence } from "@/lib/cadence/advance";
-import { pushEngagedTag, pushExhaustedTag, pushOutcomeToGhl } from "@/lib/ghl/post-call";
+import { APP, CAMPAIGN } from "@/config";
+import { loadLeadState, markEngaged, markExhausted, recordAttempt, writeLeadState } from "@/lib/state";
+import { computeNextStep } from "@/lib/cadence/advance";
+import { nextAttemptAt } from "@/lib/cadence/schedule";
+import { resolveLeadTimezone } from "@/lib/timezone";
 
 export const runtime = "nodejs";
 
-const ENGAGED_DURATION_S = 30;
-
 /**
- * Retell post-call webhook. Retell will POST when a call ends with the
- * call_id, duration, status, transcript URL, and any custom metadata we
- * set when placing the call.
+ * Retell post-call webhook. Looks up the lead via the metadata we passed
+ * when placing the call, records the outcome to the GHL contact, and either
+ * marks engagement (if they stayed past threshold) or schedules the next
+ * cadence step.
  */
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as RetellWebhookBody | null;
-  if (!body || !body.call?.call_id) {
+  if (!body?.call?.call_id) {
     return NextResponse.json({ ok: false, error: "invalid_body" }, { status: 400 });
   }
-
   const call = body.call;
   const meta = (call.metadata ?? {}) as RetellMetadata;
-  const db = supabaseAdmin();
 
-  // Locate the attempt we created when dispatching
-  const { data: attempt } = await db
-    .from("call_attempts")
-    .select("id, lead_id, agency_id, scheduled_call_id")
-    .eq("retell_call_id", call.call_id)
-    .maybeSingle();
+  const contactId = meta.contact_id;
+  if (!contactId) return NextResponse.json({ ok: true, ignored: "no_contact_id_in_metadata" });
 
-  if (!attempt) {
-    // Inbound call (not initiated by us) — create the attempt fresh
-    if (!meta.agency_id || !meta.lead_id) {
-      return NextResponse.json({ ok: true, ignored: true });
-    }
-  }
+  const lead = await loadLeadState(contactId);
+  if (!lead) return NextResponse.json({ ok: false, error: "contact_not_found" }, { status: 404 });
 
-  const agencyId = attempt?.agency_id ?? meta.agency_id;
-  const leadId = attempt?.lead_id ?? meta.lead_id;
-  const campaignId = meta.campaign_id;
-  if (!agencyId || !leadId) {
-    return NextResponse.json({ ok: false, error: "no_agency_or_lead" }, { status: 400 });
-  }
-
-  const duration = call.call_length_seconds ?? call.duration_ms ? Math.round((call.duration_ms ?? 0) / 1000) : 0;
-  const answered = call.disconnection_reason === "user_hangup" || (call.call_status === "ended" && duration > 0);
+  const duration = Math.round((call.call_length_seconds ?? (call.duration_ms ?? 0) / 1000) || 0);
   const outcome = mapOutcome(call, duration);
-  const engaged = outcome === "answered" && duration >= ENGAGED_DURATION_S;
+  const engaged = outcome === "answered" && duration >= APP.engagedDurationSeconds;
 
-  // Update the attempt
-  if (attempt) {
-    await db.from("call_attempts").update({
-      ended_at: new Date().toISOString(),
-      duration_s: duration,
-      outcome,
-      transcript_url: call.transcript_url ?? null,
-      recording_url: call.recording_url ?? null,
-      raw_payload: body as unknown as object,
-    }).eq("id", attempt.id);
-
-    if (attempt.scheduled_call_id) {
-      await db.from("scheduled_calls").update({ status: "completed" }).eq("id", attempt.scheduled_call_id);
-    }
-  }
-
-  // Bump voice attempt counter on lead
-  const { data: lead } = await db
-    .from("leads")
-    .select("attempts_voice, attempts_sms, attempts_email, ghl_contact_id")
-    .eq("id", leadId)
-    .single();
-  if (lead) {
-    await db.from("leads").update({
-      attempts_voice: (lead.attempts_voice ?? 0) + 1,
-      last_outcome: outcome,
-      status: engaged ? "engaged" : "in_progress",
-    }).eq("id", leadId);
-  }
-
-  // Digest event
-  await db.from("digest_events").insert({
-    agency_id: agencyId,
-    lead_id: leadId,
-    type: engaged ? "call.engaged" : `call.${outcome}`,
-    payload: { call_id: call.call_id, duration_s: duration, transcript_url: call.transcript_url ?? null },
+  await recordAttempt(contactId, {
+    channel: "voice",
+    outcome,
+    durationSeconds: duration,
+    transcriptUrl: call.transcript_url ?? undefined,
   });
 
-  // Push to GHL if we have a contact and the agency configured a PIT
-  const { data: agency } = await db.from("agencies").select("location_id, ghl_pit_enc").eq("id", agencyId).single();
-  if (agency?.ghl_pit_enc && lead?.ghl_contact_id) {
-    await pushOutcomeToGhl({
-      pitEnc: agency.ghl_pit_enc,
-      locationId: agency.location_id,
-      contactId: lead.ghl_contact_id,
-      outcome,
-      attempts: {
-        voice: (lead.attempts_voice ?? 0) + 1,
-        sms: lead.attempts_sms ?? 0,
-        email: lead.attempts_email ?? 0,
-      },
-      durationSeconds: duration,
-      transcriptUrl: call.transcript_url ?? null,
-      campaignId: campaignId ?? "",
-      lastAttemptAt: new Date().toISOString(),
-    });
-  }
+  await writeLeadState(contactId, {
+    activeCallId: null,
+    lastOutcome: outcome,
+    lastAttemptAt: new Date(),
+    ...(call.transcript_url ? { transcriptUrl: call.transcript_url } : {}),
+  });
 
   if (engaged) {
-    if (agency?.ghl_pit_enc && lead?.ghl_contact_id) {
-      await pushEngagedTag({ pitEnc: agency.ghl_pit_enc, locationId: agency.location_id, contactId: lead.ghl_contact_id });
-    }
-    // Cancel any remaining queued steps
-    await db.from("scheduled_calls").update({ status: "cancelled" }).eq("lead_id", leadId).eq("status", "queued");
-    await db.from("scheduled_messages").update({ status: "cancelled" }).eq("lead_id", leadId).eq("status", "queued");
+    await markEngaged(contactId, outcome);
     return NextResponse.json({ ok: true, engaged: true });
   }
 
-  // Not engaged → schedule next step
-  const result = campaignId
-    ? await advanceCadence({
-        agencyId,
-        leadId,
-        campaignId,
-        fromStepIndex: meta.step_index ?? 0,
-      })
-    : null;
-
-  if (result && !result.scheduled && result.reason === "max_attempts") {
-    await db.from("leads").update({ status: "exhausted" }).eq("id", leadId);
-    if (agency?.ghl_pit_enc && lead?.ghl_contact_id) {
-      await pushExhaustedTag({ pitEnc: agency.ghl_pit_enc, locationId: agency.location_id, contactId: lead.ghl_contact_id });
-    }
-    await db.from("digest_events").insert({
-      agency_id: agencyId,
-      lead_id: leadId,
-      type: "lead.exhausted",
-      payload: {},
-    });
+  // Advance to next step
+  const result = computeNextStep({ ...lead, lastOutcome: outcome, attempts: { ...lead.attempts } }, new Date());
+  if (!result.scheduled) {
+    await markExhausted(contactId);
+    return NextResponse.json({ ok: true, outcome, terminal: true });
   }
 
-  return NextResponse.json({ ok: true, outcome, scheduled_next: result?.scheduled ?? false });
+  const leadTz = resolveLeadTimezone({
+    ghlTimezone: lead.timezone,
+    phoneE164: lead.phone,
+    agencyTimezone: APP.agency.timezone,
+  });
+  const fireAt = nextAttemptAt(result.step, {
+    baseline: new Date(),
+    leadTz,
+    quietHours: CAMPAIGN.quietHours,
+    spread: CAMPAIGN.spreadHours,
+  });
+
+  await writeLeadState(contactId, { stepIndex: result.stepIndex, nextAttemptAt: fireAt });
+
+  return NextResponse.json({ ok: true, outcome, next_step: result.stepIndex, next_at: fireAt.toISOString() });
 }
 
 function mapOutcome(call: RetellCall, durationS: number): "answered" | "no_answer" | "voicemail" | "busy" | "failed" {
@@ -169,10 +101,6 @@ interface RetellCall {
 }
 
 interface RetellMetadata {
-  agency_id?: string;
-  campaign_id?: string;
-  lead_id?: string;
-  scheduled_call_id?: string;
-  ghl_contact_id?: string;
+  contact_id?: string;
   step_index?: number;
 }

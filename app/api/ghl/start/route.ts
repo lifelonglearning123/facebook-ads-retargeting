@@ -1,0 +1,65 @@
+import { NextResponse } from "next/server";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
+import { GhlStartPayloadSchema, toBool } from "@/lib/ghl/webhook";
+import { resolveLeadTimezone } from "@/lib/timezone";
+import { nextAttemptAt } from "@/lib/cadence/schedule";
+import { pickFirstStep } from "@/lib/cadence/advance";
+import { APP, CAMPAIGN } from "@/config";
+import { enterCadence, recordAttempt } from "@/lib/state";
+
+export const runtime = "nodejs";
+
+/**
+ * GHL workflow webhook entrypoint. Fires when the agency's "Start AI
+ * Callback" workflow runs (typically on tag added). We compute the lead's
+ * first cadence step and write it back to the contact's custom fields; the
+ * /api/tick cron picks it up from there.
+ */
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null);
+  const parsed = GhlStartPayloadSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: "invalid_payload", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const p = parsed.data;
+
+  const phone = parsePhoneNumberFromString(p.phone, "GB");
+  if (!phone || !phone.isValid()) {
+    return NextResponse.json({ ok: false, error: "invalid_phone" }, { status: 400 });
+  }
+
+  const smsConsent = toBool(p.sms_consent);
+  const emailConsent = toBool(p.email_consent);
+
+  const first = pickFirstStep({ sms: smsConsent, email: emailConsent });
+  if (!first) {
+    return NextResponse.json({ ok: true, contact_id: p.contact_id, scheduled: false, reason: "no_consented_step" });
+  }
+
+  const leadTz = resolveLeadTimezone({
+    ghlTimezone: p.timezone,
+    phoneE164: phone.number,
+    agencyTimezone: APP.agency.timezone,
+  });
+
+  const fireAt = nextAttemptAt(first.step, {
+    baseline: new Date(),
+    leadTz,
+    quietHours: CAMPAIGN.quietHours,
+    spread: CAMPAIGN.spreadHours,
+  });
+
+  await enterCadence(p.contact_id, first.stepIndex, fireAt, { sms: smsConsent, email: emailConsent });
+  await recordAttempt(p.contact_id, {
+    channel: first.step.channel,
+    outcome: `queued_step_${first.stepIndex}`,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    contact_id: p.contact_id,
+    step_index: first.stepIndex,
+    channel: first.step.channel,
+    next_attempt_at: fireAt.toISOString(),
+  });
+}

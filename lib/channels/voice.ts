@@ -1,30 +1,26 @@
-import { decrypt } from "@/lib/crypto";
+import { APP } from "@/config";
 
 interface PlaceCallOpts {
-  retellApiKeyEnc: string;
-  agentId: string;
-  fromNumber: string;
   toNumber: string;
   metadata?: Record<string, unknown>;
 }
 
 /**
- * Place an outbound call via Retell. Retell handles Twilio under the hood
- * using the agency's connected Twilio number. Returns the retell_call_id
- * for tracking via the post-call webhook.
+ * Place an outbound call via Retell. Retell delivers via the agency's
+ * connected Twilio number. The returned call_id is what we'll match in
+ * the post-call webhook.
  */
 export async function placeVoiceCall(opts: PlaceCallOpts): Promise<{ call_id: string }> {
-  const apiKey = decrypt(opts.retellApiKeyEnc);
   const res = await fetch("https://api.retellai.com/v2/create-phone-call", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${APP.retell.apiKey}`,
     },
     body: JSON.stringify({
-      from_number: opts.fromNumber,
+      from_number: APP.twilio.phoneNumber,
       to_number: opts.toNumber,
-      override_agent_id: opts.agentId,
+      override_agent_id: APP.retell.agentId,
       metadata: opts.metadata ?? {},
     }),
   });

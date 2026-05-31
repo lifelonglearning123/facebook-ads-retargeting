@@ -1,27 +1,23 @@
 import { Resend } from "resend";
+import { APP } from "@/config";
 
 interface SendEmailOpts {
-  apiKey: string;        // per-agency Resend key (read from env in per-clone deployment)
-  from: string;          // "Acme Agency <hello@acme.com>"
   to: string;
   subject: string;
   html: string;
   unsubscribeUrl?: string;
 }
 
-/**
- * Send an email via the agency's Resend domain. Adds the List-Unsubscribe
- * header so providers like Gmail surface a native unsubscribe link.
- */
 export async function sendEmail(opts: SendEmailOpts): Promise<{ id: string }> {
-  const resend = new Resend(opts.apiKey);
+  const resend = new Resend(APP.email.apiKey);
   const headers: Record<string, string> = {};
   if (opts.unsubscribeUrl) {
     headers["List-Unsubscribe"] = `<${opts.unsubscribeUrl}>`;
     headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
   }
+  const from = APP.email.fromName ? `${APP.email.fromName} <${APP.email.fromAddress}>` : APP.email.fromAddress;
   const { data, error } = await resend.emails.send({
-    from: opts.from,
+    from,
     to: opts.to,
     subject: opts.subject,
     html: opts.html,

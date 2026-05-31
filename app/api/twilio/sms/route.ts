@@ -1,64 +1,49 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
+import { searchByTag, type GhlContact } from "@/lib/ghl/client";
+import { leadStateFromContact, markEngaged, markStopped, recordAttempt, writeLeadState } from "@/lib/state";
+import { APP } from "@/config";
 
 export const runtime = "nodejs";
 
 const STOP_KEYWORDS = ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "OPTOUT", "OPT-OUT"];
 
 /**
- * Inbound SMS webhook. Twilio form-encodes the payload. We detect STOP-like
- * keywords and cancel queued retries for the matching lead.
+ * Twilio inbound SMS webhook. Matches the sender phone against active leads
+ * (tag = ai-active) and reacts: STOP keywords → stopped + no further sends;
+ * any other reply → engaged + cancels remaining cadence.
  */
 export async function POST(req: Request) {
   const form = await req.formData();
   const from = String(form.get("From") ?? "");
-  const bodyRaw = String(form.get("Body") ?? "").trim().toUpperCase();
+  const rawBody = String(form.get("Body") ?? "");
   if (!from) return new NextResponse(emptyTwiml(), { headers: { "Content-Type": "text/xml" } });
 
   const phone = parsePhoneNumberFromString(from);
   if (!phone?.isValid()) return new NextResponse(emptyTwiml(), { headers: { "Content-Type": "text/xml" } });
   const e164 = phone.number;
 
-  const db = supabaseAdmin();
+  const isStop = STOP_KEYWORDS.some((kw) => rawBody.trim().toUpperCase().split(/\s+/).includes(kw));
 
-  const { data: leads } = await db
-    .from("leads")
-    .select("id, agency_id, campaign_id")
-    .eq("phone_e164", e164)
-    .in("status", ["queued", "in_progress"]);
+  // Find the matching active contact by phone
+  const actives: GhlContact[] = await searchByTag({ tag: APP.ghl.activeTag, pageLimit: 100 });
+  const matches = actives.filter((c) => {
+    const p = c.phone ? parsePhoneNumberFromString(c.phone) : null;
+    return p?.isValid() && p.number === e164;
+  });
 
-  if (!leads || leads.length === 0) {
-    return new NextResponse(emptyTwiml(), { headers: { "Content-Type": "text/xml" } });
-  }
-
-  const isStop = STOP_KEYWORDS.some((kw) => bodyRaw.split(/\s+/).includes(kw));
-
-  for (const lead of leads) {
-    await db.from("message_attempts").insert({
-      agency_id: lead.agency_id,
-      lead_id: lead.id,
+  for (const c of matches) {
+    const lead = leadStateFromContact(c);
+    await recordAttempt(lead.contactId, {
       channel: "sms",
-      outcome: isStop ? "unsubscribed" : "replied",
-      body_snapshot: String(form.get("Body") ?? ""),
+      outcome: isStop ? "received_stop" : "received_reply",
+      bodySnapshot: rawBody,
     });
-
-    await db.from("digest_events").insert({
-      agency_id: lead.agency_id,
-      lead_id: lead.id,
-      type: isStop ? "sms.unsubscribed" : "sms.replied",
-      payload: { body: String(form.get("Body") ?? "") },
-    });
-
     if (isStop) {
-      await db.from("scheduled_calls").update({ status: "cancelled" }).eq("lead_id", lead.id).eq("status", "queued");
-      await db.from("scheduled_messages").update({ status: "cancelled" }).eq("lead_id", lead.id).eq("status", "queued");
-      await db.from("leads").update({ status: "stopped", last_outcome: "sms_stop", sms_consent: false }).eq("id", lead.id);
+      await writeLeadState(lead.contactId, { smsConsent: false });
+      await markStopped(lead.contactId, "sms_stop");
     } else {
-      // Treat replies as engagement — cancel further retries.
-      await db.from("scheduled_calls").update({ status: "cancelled" }).eq("lead_id", lead.id).eq("status", "queued");
-      await db.from("scheduled_messages").update({ status: "cancelled" }).eq("lead_id", lead.id).eq("status", "queued");
-      await db.from("leads").update({ status: "engaged", last_outcome: "sms_reply" }).eq("id", lead.id);
+      await markEngaged(lead.contactId, "sms_reply");
     }
   }
 
