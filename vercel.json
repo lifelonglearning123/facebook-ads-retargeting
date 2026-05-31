@@ -1,7 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/tick?se",
       "path": "/api/tick?secret=lkjhgbnmbvcxsd31234rt_@kjmnbvc_",
       "schedule": "* * * * *"
     }
