@@ -1,35 +1,56 @@
 {
   "$schema": "https://raw.githubusercontent.com/your-org/fb-retargeting/main/snapshot/schema.json",
   "name": "AI Retargeting Connector",
-  "version": "1.0.0",
-  "description": "Provisions everything needed in a GHL sub-account to integrate with the AI Retargeting Callback platform. Workflows fire webhooks at our app; custom fields receive call/SMS/email outcomes; tags drive lifecycle.",
-  "_notes": "GHL Snapshots are exported via their UI. This JSON is the BLUEPRINT — engineering uses it as the source-of-truth when assembling the snapshot inside a master GHL location, or to drive PIT-based programmatic creation where the API permits. Placeholder tokens in URLs (`__APP_BASE_URL__`, `__START_TOKEN__`, `__STOP_TOKEN__`) are patched by the installer after import.",
+  "version": "1.1.0",
+  "description": "Provisions every custom field and tag the AI Retargeting Callback app expects to exist in a GHL sub-account. Idempotent — the provisioner only creates what isn't already there.",
+  "_notes": "This file is the source of truth for first-time GHL setup. lib/ghl/setup.ts reads it; the /config dashboard's 'Provision custom fields + tags' button runs that setup. Keep this file in sync with lib/state.ts — anything state.ts reads or writes must be declared here.",
 
   "customFields": [
     {
-      "key": "ai_lead_status",
-      "name": "AI Lead Status",
+      "key": "ai_status",
+      "name": "AI Status",
       "type": "TEXT",
       "group": "AI Retargeting",
       "description": "queued | in_progress | engaged | exhausted | stopped"
     },
     {
-      "key": "ai_call_attempts",
-      "name": "AI Call Attempts",
+      "key": "ai_step_index",
+      "name": "AI Step Index",
+      "type": "NUMBER",
+      "group": "AI Retargeting",
+      "description": "Current 0-indexed cadence step the lead is on."
+    },
+    {
+      "key": "ai_next_attempt_at",
+      "name": "AI Next Attempt At",
+      "type": "DATE",
+      "group": "AI Retargeting",
+      "description": "ISO timestamp the next cadence step is due to fire."
+    },
+    {
+      "key": "ai_attempts_voice",
+      "name": "AI Attempts Voice",
       "type": "NUMBER",
       "group": "AI Retargeting"
     },
     {
-      "key": "ai_sms_attempts",
-      "name": "AI SMS Attempts",
+      "key": "ai_attempts_sms",
+      "name": "AI Attempts SMS",
       "type": "NUMBER",
       "group": "AI Retargeting"
     },
     {
-      "key": "ai_email_attempts",
-      "name": "AI Email Attempts",
+      "key": "ai_attempts_email",
+      "name": "AI Attempts Email",
       "type": "NUMBER",
       "group": "AI Retargeting"
+    },
+    {
+      "key": "ai_last_outcome",
+      "name": "AI Last Outcome",
+      "type": "TEXT",
+      "group": "AI Retargeting",
+      "description": "answered | no_answer | voicemail | busy | failed | sms_sent | email_sent | sms_reply | email_unsubscribed | ..."
     },
     {
       "key": "ai_last_attempt_at",
@@ -38,118 +59,41 @@
       "group": "AI Retargeting"
     },
     {
-      "key": "ai_last_outcome",
-      "name": "AI Last Outcome",
-      "type": "TEXT",
-      "group": "AI Retargeting",
-      "description": "answered | no_answer | voicemail | busy | failed | sms_sent | sms_replied | email_sent | email_clicked | email_bounced"
-    },
-    {
-      "key": "ai_call_duration_s",
-      "name": "AI Last Call Duration (s)",
-      "type": "NUMBER",
-      "group": "AI Retargeting"
-    },
-    {
       "key": "ai_transcript_url",
-      "name": "AI Last Transcript URL",
-      "type": "TEXT",
-      "group": "AI Retargeting"
-    },
-    {
-      "key": "ai_campaign_id",
-      "name": "AI Campaign ID",
+      "name": "AI Transcript URL",
       "type": "TEXT",
       "group": "AI Retargeting",
-      "description": "Set by our app on first webhook; lets agency segment by campaign in GHL reports."
+      "description": "URL of the most recent call transcript from Retell."
+    },
+    {
+      "key": "ai_active_call_id",
+      "name": "AI Active Call ID",
+      "type": "TEXT",
+      "group": "AI Retargeting",
+      "description": "Set to the Retell call_id while a call is in flight; cleared on call end."
     },
     {
       "key": "ai_sms_consent",
-      "name": "SMS Consent",
+      "name": "AI SMS Consent",
       "type": "CHECKBOX",
       "group": "AI Retargeting",
-      "description": "TCPA: required true before SMS step executes."
+      "description": "Currently not enforced (FB Lead Form captures consent upstream)."
     },
     {
       "key": "ai_email_consent",
-      "name": "Email Consent",
+      "name": "AI Email Consent",
       "type": "CHECKBOX",
-      "group": "AI Retargeting"
+      "group": "AI Retargeting",
+      "description": "Currently not enforced (FB Lead Form captures consent upstream)."
     }
   ],
 
   "tags": [
-    { "name": "ai-callback",        "description": "Adding this tag enqueues the contact into the configured campaign cadence." },
-    { "name": "stop-ai-callback",   "description": "Adding this tag cancels all queued voice/SMS/email retries for the contact." },
-    { "name": "ai-engaged",         "description": "Set by our app when lead picks up + stays past threshold OR calls back inbound." },
-    { "name": "ai-exhausted",       "description": "Set by our app when max attempts reached without engagement." }
-  ],
-
-  "workflows": [
-    {
-      "id": "wf_ai_start",
-      "name": "AI Retargeting — Start Calling",
-      "description": "Fires our start webhook when a contact is tagged 'ai-callback'. Agency may add filters upstream (e.g. source = Facebook).",
-      "triggers": [
-        {
-          "type": "ContactTagAdded",
-          "filters": [
-            { "field": "tag", "operator": "equals", "value": "ai-callback" }
-          ]
-        }
-      ],
-      "actions": [
-        {
-          "type": "Webhook",
-          "name": "Start AI Retargeting",
-          "url": "__APP_BASE_URL__/api/ghl/start/__START_TOKEN__",
-          "method": "POST",
-          "headers": {
-            "Content-Type": "application/json"
-          },
-          "body": {
-            "contact_id": "{{contact.id}}",
-            "location_id": "{{location.id}}",
-            "phone": "{{contact.phone}}",
-            "first_name": "{{contact.first_name}}",
-            "last_name": "{{contact.last_name}}",
-            "email": "{{contact.email}}",
-            "timezone": "{{contact.timezone}}",
-            "sms_consent": "{{contact.ai_sms_consent}}",
-            "email_consent": "{{contact.ai_email_consent}}",
-            "ad_id": "{{contact.attributionSource.adId}}",
-            "ad_campaign": "{{contact.attributionSource.campaign}}",
-            "ad_set": "{{contact.attributionSource.adSet}}",
-            "source": "{{contact.source}}",
-            "campaign_id": "__CAMPAIGN_ID__"
-          }
-        }
-      ]
-    },
-    {
-      "id": "wf_ai_stop",
-      "name": "AI Retargeting — Stop Calling",
-      "description": "Cancels all queued retries. Triggered on appointment booked, won opportunity, or 'stop-ai-callback' tag.",
-      "triggers": [
-        { "type": "ContactTagAdded", "filters": [{ "field": "tag", "operator": "equals", "value": "stop-ai-callback" }] },
-        { "type": "AppointmentBooked" },
-        { "type": "OpportunityStatusChanged", "filters": [{ "field": "status", "operator": "equals", "value": "won" }] }
-      ],
-      "actions": [
-        {
-          "type": "Webhook",
-          "name": "Stop AI Retargeting",
-          "url": "__APP_BASE_URL__/api/ghl/stop/__STOP_TOKEN__",
-          "method": "POST",
-          "headers": { "Content-Type": "application/json" },
-          "body": {
-            "contact_id": "{{contact.id}}",
-            "location_id": "{{location.id}}",
-            "reason": "ghl_workflow"
-          }
-        }
-      ]
-    }
+    { "name": "ai-callback",      "description": "Adding this tag enters the contact into the cadence. The intake pass removes it once the lead is processed." },
+    { "name": "ai-active",        "description": "Added by intake. Marks contacts currently moving through the cadence. Used by the dispatch pass to find due leads." },
+    { "name": "ai-engaged",       "description": "Set on terminal engagement (lead picked up + stayed past threshold, OR replied via SMS, OR called back inbound)." },
+    { "name": "ai-exhausted",     "description": "Set on terminal exhaustion (max attempts reached without engagement)." },
+    { "name": "stop-ai-callback", "description": "Adding this tag cancels all remaining cadence steps for the contact." }
   ],
 
   "installer": {
@@ -157,18 +101,14 @@
       "locations.readonly",
       "contacts.readonly",
       "contacts.write",
-      "customFields.readonly",
-      "customFields.write",
-      "tags.write",
-      "workflows.readonly",
-      "workflows.write"
+      "locations/customFields.readonly",
+      "locations/customFields.write",
+      "locations/tags.readonly",
+      "locations/tags.write",
+      "conversations.readonly",
+      "conversations.write",
+      "conversations/message.write"
     ],
-    "fallbackBehavior": "If workflow PATCH or workflow CREATE is not exposed by the GHL API for the agency's plan, the installer creates custom fields + tags automatically and presents the workflow JSON in the dashboard for one-paste import via GHL's snapshot-import UI. Webhook URLs are patched post-import if API permits, else copy-paste UI is shown.",
-    "placeholderTokens": {
-      "__APP_BASE_URL__": "The Vercel deployment URL for this agency clone, e.g. https://calls.acme-agency.com",
-      "__START_TOKEN__": "Per-campaign opaque secret generated on campaign create — embedded in start webhook URL",
-      "__STOP_TOKEN__": "Per-campaign opaque secret generated on campaign create — embedded in stop webhook URL",
-      "__CAMPAIGN_ID__": "Per-campaign UUID — included in webhook body to aid agency-side segmentation"
-    }
+    "checkboxNotes": "GHL's CHECKBOX dataType requires an options array (it's a multi-select checkbox under the hood, not a boolean). The provisioner passes options: [\"Yes\"] so a ticked box stores the string \"Yes\", which the app's toBool() helper accepts."
   }
 }

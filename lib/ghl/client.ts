@@ -176,6 +176,11 @@ export async function createCustomField(input: {
   };
   if (input.fieldKey) body.fieldKey = input.fieldKey;
   if (input.group) body.placeholder = input.group;
+  // GHL CHECKBOX is a multi-option type (not a boolean) so it requires an
+  // options array. We use a single "Yes" option so a ticked box stores the
+  // string "Yes", which the app's toBool() helper recognises.
+  if (input.dataType === "CHECKBOX") body.options = ["Yes"];
+
   const data = await req<{ customField: GhlCustomField }>(
     `/locations/${APP.ghl.locationId}/customFields`,
     { method: "POST", body: JSON.stringify(body) }
