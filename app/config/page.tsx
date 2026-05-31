@@ -1,4 +1,5 @@
 import { APP, CAMPAIGN, TEMPLATES } from "@/config";
+import ProvisionButton from "./ProvisionButton";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,10 @@ export default function ConfigPage() {
           All config lives in <code>config.ts</code> + environment variables. Edit and redeploy to change.
         </p>
       </header>
+
+      <Section title="GHL provisioning">
+        <ProvisionButton />
+      </Section>
 
       <Section title="Webhook URLs to paste into GHL / Retell">
         <UrlRow label="GHL → Start workflow webhook" value={startUrl} />

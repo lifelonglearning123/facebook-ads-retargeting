@@ -89,7 +89,7 @@ export const APP = {
   /** Shared secret in the Vercel cron URL so randos can't trigger /api/tick. */
   cronSecret: process.env.CRON_SECRET ?? "",
   /** Voice attempt duration in seconds for the lead to count as engaged. */
-  engagedDurationSeconds: 30,
+  engagedDurationSeconds: 15,
 } as const;
 
 // ---------------------------------------------------------------------------

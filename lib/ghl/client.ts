@@ -144,6 +144,63 @@ export async function sendEmailViaGhl(opts: SendEmailViaGhlOpts): Promise<{ mess
   return { messageId: data.messageId };
 }
 
+// ─── Custom fields + tags (provisioning) ─────────────────────────────────
+
+export interface GhlCustomField {
+  id: string;
+  name: string;
+  fieldKey?: string;       // GHL stores this as "fieldKey" sometimes; sometimes "key"
+  dataType: string;
+  parentId?: string;
+}
+
+export async function listCustomFields(): Promise<GhlCustomField[]> {
+  const data = await req<{ customFields: GhlCustomField[] }>(
+    `/locations/${APP.ghl.locationId}/customFields`
+  );
+  return data.customFields ?? [];
+}
+
+export async function createCustomField(input: {
+  name: string;
+  dataType: "TEXT" | "NUMERICAL" | "DATE" | "CHECKBOX";
+  fieldKey?: string;
+  model?: "contact";
+  group?: string;
+}): Promise<GhlCustomField> {
+  const body: Record<string, unknown> = {
+    locationId: APP.ghl.locationId,
+    name: input.name,
+    dataType: input.dataType,
+    model: input.model ?? "contact",
+  };
+  if (input.fieldKey) body.fieldKey = input.fieldKey;
+  if (input.group) body.placeholder = input.group;
+  const data = await req<{ customField: GhlCustomField }>(
+    `/locations/${APP.ghl.locationId}/customFields`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+  return data.customField;
+}
+
+export interface GhlTag {
+  id?: string;
+  name: string;
+}
+
+export async function listTags(): Promise<GhlTag[]> {
+  const data = await req<{ tags: GhlTag[] }>(`/locations/${APP.ghl.locationId}/tags`);
+  return data.tags ?? [];
+}
+
+export async function createTag(name: string): Promise<GhlTag> {
+  const data = await req<{ tag: GhlTag }>(`/locations/${APP.ghl.locationId}/tags`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  return data.tag;
+}
+
 // ─── Contact search by tag ────────────────────────────────────────────────
 
 export interface SearchOpts {

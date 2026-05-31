@@ -11,7 +11,7 @@
       "name": "AI Lead Status",
       "type": "TEXT",
       "group": "AI Retargeting",
-      "description": "queued | calling | answered | engaged | exhausted | stopped"
+      "description": "queued | in_progress | engaged | exhausted | stopped"
     },
     {
       "key": "ai_call_attempts",
