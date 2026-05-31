@@ -23,7 +23,7 @@
     {
       "key": "ai_next_attempt_at",
       "name": "AI Next Attempt At",
-      "type": "DATE",
+      "type": "TEXT",
       "group": "AI Retargeting",
       "description": "ISO timestamp the next cadence step is due to fire."
     },
@@ -55,7 +55,7 @@
     {
       "key": "ai_last_attempt_at",
       "name": "AI Last Attempt At",
-      "type": "DATE",
+      "type": "TEXT",
       "group": "AI Retargeting"
     },
     {

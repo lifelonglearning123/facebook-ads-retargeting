@@ -13,20 +13,27 @@ interface ComputeOpts {
   recentHours?: number[];
   /** Whether spread mode is enabled on the campaign */
   spread?: boolean;
+  /**
+   * If true, the computed time is NOT clamped to quiet hours. Used for the
+   * very first call to a FB lead: they just clicked, they're clearly awake,
+   * so we ring them regardless of the time of day. All subsequent retries
+   * leave this false (default) so they respect working hours.
+   */
+  bypassQuietHours?: boolean;
 }
 
 /**
  * Compute the next_attempt_at timestamp for a cadence step.
  *
  * Returns a UTC Date. The caller persists this to scheduled_calls/scheduled_messages.
- * Quiet hours are enforced: if the computed time falls outside the window, we slide
- * forward to the next valid moment (still in lead's timezone).
+ * Quiet hours are enforced (unless bypassQuietHours is true): if the computed
+ * time falls outside the window, we slide forward to the next valid moment.
  */
 export function nextAttemptAt(step: CadenceStep, opts: ComputeOpts): Date {
   const tz = opts.leadTz;
   const base = DateTime.fromJSDate(opts.baseline, { zone: tz });
   const raw = applyWhen(step, base, opts);
-  const adjusted = clampToQuietHours(raw, opts.quietHours);
+  const adjusted = opts.bypassQuietHours ? raw : clampToQuietHours(raw, opts.quietHours);
   return adjusted.toUTC().toJSDate();
 }
 

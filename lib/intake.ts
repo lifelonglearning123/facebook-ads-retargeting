@@ -61,6 +61,8 @@ export async function runIntake(campaign: CampaignConfig): Promise<IntakeResult>
         leadTz,
         quietHours: campaign.quietHours,
         spread: campaign.spreadHours,
+        // First call after the FB click — the lead is awake, ring them now.
+        bypassQuietHours: true,
       });
       await enterCadence(contact.id, first.stepIndex, fireAt, { sms: true, email: true });
       await removeTag(contact.id, APP.ghl.sourceTag).catch(() => {});

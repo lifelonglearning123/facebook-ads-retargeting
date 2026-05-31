@@ -42,6 +42,8 @@ export async function POST(req: Request) {
     leadTz,
     quietHours: campaign.quietHours,
     spread: campaign.spreadHours,
+    // First call after the FB click — the lead is awake, ring them now.
+    bypassQuietHours: true,
   });
 
   await enterCadence(p.contact_id, first.stepIndex, fireAt, { sms: true, email: true });
