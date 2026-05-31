@@ -22,6 +22,7 @@ export async function placeVoiceCall(opts: PlaceCallOpts): Promise<{ call_id: st
       to_number: opts.toNumber,
       override_agent_id: APP.retell.agentId,
       metadata: opts.metadata ?? {},
+      webhook_url: `${APP.appUrl}/api/retell/postcall`,
     }),
   });
   if (!res.ok) {

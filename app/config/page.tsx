@@ -1,5 +1,6 @@
 import { APP, CAMPAIGN, TEMPLATES } from "@/config";
 import ProvisionButton from "./ProvisionButton";
+import RetellSetupButton from "./RetellSetupButton";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,10 @@ export default function ConfigPage() {
 
       <Section title="GHL provisioning">
         <ProvisionButton />
+      </Section>
+
+      <Section title="Retell agent setup">
+        <RetellSetupButton />
       </Section>
 
       <Section title="Webhook URLs to paste into GHL / Retell">
