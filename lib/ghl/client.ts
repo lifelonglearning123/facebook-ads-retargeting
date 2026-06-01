@@ -299,9 +299,9 @@ export interface GhlOpportunity {
  */
 export async function getContactOpportunities(contactId: string): Promise<GhlOpportunity[]> {
   try {
-    const data = await req<{ opportunities: GhlOpportunity[] }>(
-      `/contacts/${contactId}/opportunities`
-    );
+    const data = await req<{ opportunities: GhlOpportunity[] }>("/opportunities/search", {
+      query: { location_id: APP.ghl.locationId, contact_id: contactId },
+    });
     return data.opportunities ?? [];
   } catch {
     return [];
