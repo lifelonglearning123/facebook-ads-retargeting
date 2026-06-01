@@ -11,9 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function ConfigPage() {
   const campaign = await getCampaign();
 
-  const startUrl = `${APP.appUrl}/api/ghl/start`;
   const stopUrl = `${APP.appUrl}/api/ghl/stop`;
-  const retellPostcallUrl = `${APP.appUrl}/api/retell/postcall`;
 
   const integrations = [
     { label: "GoHighLevel location ID", value: APP.ghl.locationId, set: !!APP.ghl.locationId },
@@ -70,12 +68,17 @@ export default async function ConfigPage() {
             <p className="text-[0.93rem] text-[rgb(var(--ink-2))]">
               In GoHighLevel, create a workflow with the trigger{" "}
               <em>Opportunity Stage Changed</em> (no stage filter — leave it open). Add a{" "}
-              <em>Webhook</em> action pointing to the Stop URL further down this page, and
-              pass the contact ID plus the new stage as the payload. The system decides
-              whether to actually stop based on the list above — so you only ever wire this
-              workflow up once, no matter how often you change your mind about which stages
-              count as "done".
+              <em>Webhook</em> action pointing to the address below, and pass the contact ID
+              plus the new stage as the payload. The system decides whether to actually stop
+              based on the list above — so you only ever wire this workflow up once, no
+              matter how often you change your mind about which stages count as "done".
             </p>
+            <code
+              className="mt-3 block break-all rounded px-3 py-2 bg-[rgb(var(--paper-deep))] text-[0.82rem] leading-relaxed text-[rgb(var(--ink))]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {stopUrl || "(set NEXT_PUBLIC_APP_URL in your environment)"}
+            </code>
           </div>
         </div>
       </section>
@@ -83,55 +86,26 @@ export default async function ConfigPage() {
       <section className="reveal reveal-d3">
         <SectionHeader
           title="How leads enter the cadence"
-          subtitle="Two ways to start a call campaign for a lead — pick whichever fits your team’s workflow."
+          subtitle="The single, simple way to start a call campaign for a lead."
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="card p-6">
-            <div className="eyebrow mb-2">Recommended · no extra setup</div>
-            <h3
-              className="text-[1.25rem] tracking-tight"
-              style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
-            >
-              Add the tag and wait
-            </h3>
-            <p className="mt-2 text-[0.93rem] text-[rgb(var(--ink-2))]">
-              In GoHighLevel, open any contact and add the tag{" "}
-              <code className="rounded px-1.5 py-0.5 bg-[rgb(var(--paper-deep))] text-[rgb(var(--ink))]" style={{ fontFamily: "var(--font-mono)" }}>
-                ai-callback
-              </code>
-              . Within 60 seconds the system picks them up and the first call goes out.
-            </p>
-          </div>
-          <div className="card p-6">
-            <div className="eyebrow mb-2">Advanced · workflow trigger</div>
-            <h3
-              className="text-[1.25rem] tracking-tight"
-              style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
-            >
-              Trigger instantly via webhook
-            </h3>
-            <p className="mt-2 text-[0.93rem] text-[rgb(var(--ink-2))]">
-              For zero-second latency, set up a GoHighLevel workflow with the trigger
-              <em> Contact Tag Added → ai-callback</em> and a webhook action pointing
-              to the Start URL below.
-            </p>
-          </div>
+        <div className="card p-6 md:p-8">
+          <h3
+            className="text-[1.25rem] tracking-tight"
+            style={{ fontFamily: "var(--font-fraunces)", fontWeight: 400 }}
+          >
+            Add the tag and wait
+          </h3>
+          <p className="mt-2 text-[0.93rem] text-[rgb(var(--ink-2))]">
+            In GoHighLevel, open any contact and add the tag{" "}
+            <code className="rounded px-1.5 py-0.5 bg-[rgb(var(--paper-deep))] text-[rgb(var(--ink))]" style={{ fontFamily: "var(--font-mono)" }}>
+              ai-callback
+            </code>
+            . Within 60 seconds the system picks them up and the first call goes out.
+          </p>
         </div>
       </section>
 
       <section className="reveal reveal-d4">
-        <SectionHeader
-          title="Webhook addresses"
-          subtitle="Paste these into GoHighLevel and Retell if you set up the advanced workflows. The Retell post-call address is set up automatically by the button below."
-        />
-        <div className="card divide-y divide-[rgb(var(--line))]">
-          <UrlRow label="Start a call campaign (GoHighLevel → here)" value={startUrl} />
-          <UrlRow label="Stop a call campaign (GoHighLevel → here)" value={stopUrl} />
-          <UrlRow label="Call ended (Retell → here)" value={retellPostcallUrl} muted />
-        </div>
-      </section>
-
-      <section className="reveal reveal-d5">
         <SectionHeader
           title="One-click setup"
           subtitle="Two buttons that make sure GoHighLevel and Retell are wired correctly. Both are safe to run multiple times — they only change what needs changing."
@@ -168,7 +142,7 @@ export default async function ConfigPage() {
         </div>
       </section>
 
-      <section className="reveal reveal-d6">
+      <section className="reveal reveal-d5">
         <SectionHeader
           title="Connections"
           subtitle="Everything this app needs to do its work. Set any missing values as environment variables and redeploy."
@@ -204,22 +178,6 @@ export default async function ConfigPage() {
           ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-function UrlRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div className="px-6 py-5">
-      <div className="eyebrow mb-2">{label}</div>
-      <code
-        className={`block break-all text-[0.85rem] leading-relaxed ${
-          muted ? "text-[rgb(var(--ink-2))]" : "text-[rgb(var(--ink))]"
-        }`}
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {value || "(set NEXT_PUBLIC_APP_URL in your environment)"}
-      </code>
     </div>
   );
 }
