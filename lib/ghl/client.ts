@@ -256,6 +256,58 @@ export async function createTag(name: string): Promise<GhlTag> {
   return data.tag;
 }
 
+// ─── Pipelines & opportunities ────────────────────────────────────────────
+
+export interface GhlPipelineStage {
+  id: string;
+  name: string;
+  position?: number;
+}
+
+export interface GhlPipeline {
+  id: string;
+  name: string;
+  stages: GhlPipelineStage[];
+}
+
+/**
+ * Lists all opportunity pipelines (and their stages) for the location.
+ * Used by the config UI to populate the "stop calling when stage =" picker.
+ */
+export async function listPipelines(): Promise<GhlPipeline[]> {
+  const data = await req<{ pipelines: GhlPipeline[] }>("/opportunities/pipelines", {
+    query: { locationId: APP.ghl.locationId },
+  });
+  return (data.pipelines ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    stages: (p.stages ?? []).slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+  }));
+}
+
+export interface GhlOpportunity {
+  id: string;
+  name?: string;
+  pipelineId: string;
+  pipelineStageId: string;
+  status?: string;
+}
+
+/**
+ * Returns the opportunities attached to a contact. Used by the pre-call guard
+ * to check the current pipeline stage before dialling. GHL returns 0..N.
+ */
+export async function getContactOpportunities(contactId: string): Promise<GhlOpportunity[]> {
+  try {
+    const data = await req<{ opportunities: GhlOpportunity[] }>(
+      `/contacts/${contactId}/opportunities`
+    );
+    return data.opportunities ?? [];
+  } catch {
+    return [];
+  }
+}
+
 // ─── Contact search by tag ────────────────────────────────────────────────
 
 export interface SearchOpts {

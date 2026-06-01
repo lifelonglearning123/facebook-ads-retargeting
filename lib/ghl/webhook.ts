@@ -22,6 +22,13 @@ export const GhlStopPayloadSchema = z.object({
   contact_id: z.string().min(1),
   location_id: z.string().min(1).optional(),
   reason: z.string().optional(),
+  // Optional pipeline context — sent by the generic "Opportunity Stage
+  // Changed" workflow. When present, the endpoint only stops the lead if
+  // stage_id is in the agency's configured stopStageIds list.
+  pipeline_id: z.string().optional().nullable(),
+  stage_id: z.string().optional().nullable(),
+  pipeline_name: z.string().optional().nullable(),
+  stage_name: z.string().optional().nullable(),
 });
 export type GhlStopPayload = z.infer<typeof GhlStopPayloadSchema>;
 

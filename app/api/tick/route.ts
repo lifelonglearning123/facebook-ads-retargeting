@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { APP } from "@/config";
-import { searchByTag } from "@/lib/ghl/client";
-import { leadStateFromContact, recordAttempt } from "@/lib/state";
+import { getContactOpportunities, searchByTag } from "@/lib/ghl/client";
+import { leadStateFromContact, markStopped, recordAttempt } from "@/lib/state";
 import { fireStep } from "@/lib/dispatch";
 import { runIntake } from "@/lib/intake";
 import { getCampaign } from "@/lib/runtime-config";
@@ -39,6 +39,19 @@ export async function GET(req: Request) {
     if (lead.nextAttemptAt.getTime() > now.getTime() + NOW_TOLERANCE_MS) { skipped++; continue; }
     if (["stopped", "engaged", "exhausted"].includes(lead.status)) { skipped++; continue; }
     if (lead.activeCallId) { skipped++; continue; }
+
+    // Belt-and-suspenders: if the agency has configured stop stages, verify
+    // the lead's current opportunity stage isn't one of them before dialling.
+    // Catches drag-and-drops that bypassed the GHL workflow.
+    if (campaign.stopStageIds.length > 0) {
+      const opps = await getContactOpportunities(lead.contactId).catch(() => []);
+      const hit = opps.find((o) => campaign.stopStageIds.includes(o.pipelineStageId));
+      if (hit) {
+        await markStopped(lead.contactId, `stage:${hit.pipelineStageId}`);
+        skipped++;
+        continue;
+      }
+    }
 
     try {
       await fireStep(campaign, lead);

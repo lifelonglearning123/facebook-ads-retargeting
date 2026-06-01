@@ -86,6 +86,7 @@ body {
 .reveal-d3 { animation-delay: 180ms; }
 .reveal-d4 { animation-delay: 240ms; }
 .reveal-d5 { animation-delay: 300ms; }
+.reveal-d6 { animation-delay: 360ms; }
 
 /* =============================================================================
    "Live" pulse for active call indicators

@@ -11,6 +11,7 @@ const RuntimeOverrideSchema = z.object({
   cadence: CadenceSchema.optional(),
   quietHours: QuietHoursSchema.optional(),
   spreadHours: z.boolean().optional(),
+  stopStageIds: z.array(z.string().min(1)).optional(),
 });
 export type RuntimeOverride = z.infer<typeof RuntimeOverrideSchema>;
 
@@ -35,6 +36,7 @@ export async function getCampaign(): Promise<CampaignConfig> {
           cadence: parsed.data.cadence ?? CAMPAIGN.cadence,
           quietHours: parsed.data.quietHours ?? CAMPAIGN.quietHours,
           spreadHours: parsed.data.spreadHours ?? CAMPAIGN.spreadHours,
+          stopStageIds: parsed.data.stopStageIds ?? CAMPAIGN.stopStageIds,
         };
       }
     }
@@ -52,8 +54,10 @@ export function invalidateRuntimeConfig(): void {
 }
 
 /**
- * Validate and persist a runtime override to GHL Custom Values. Returns the
- * merged campaign that will take effect.
+ * Validate and persist a runtime override to GHL Custom Values. Performs a
+ * partial merge with whatever's already stored, so each editor on the config
+ * page can save its own slice without wiping the others. Returns the merged
+ * campaign that will take effect.
  */
 export async function saveRuntimeOverride(input: unknown): Promise<{ ok: true; campaign: CampaignConfig } | { ok: false; error: string }> {
   const parsed = RuntimeOverrideSchema.safeParse(input);
@@ -61,7 +65,18 @@ export async function saveRuntimeOverride(input: unknown): Promise<{ ok: true; c
     return { ok: false, error: JSON.stringify(parsed.error.flatten()) };
   }
   try {
-    await upsertCustomValue(STORE_KEY, JSON.stringify(parsed.data));
+    let existing: RuntimeOverride = {};
+    try {
+      const raw = await getCustomValue(STORE_KEY);
+      if (raw) {
+        const prev = RuntimeOverrideSchema.safeParse(JSON.parse(raw));
+        if (prev.success) existing = prev.data;
+      }
+    } catch {
+      /* treat missing/corrupt as empty */
+    }
+    const merged: RuntimeOverride = { ...existing, ...parsed.data };
+    await upsertCustomValue(STORE_KEY, JSON.stringify(merged));
     invalidateRuntimeConfig();
     const campaign = await getCampaign();
     return { ok: true, campaign };

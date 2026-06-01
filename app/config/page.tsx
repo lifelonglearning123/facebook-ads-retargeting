@@ -4,6 +4,7 @@ import { PageHeader, SectionHeader } from "@/components/presentational";
 import ProvisionButton from "./ProvisionButton";
 import RetellSetupButton from "./RetellSetupButton";
 import CadenceEditor from "./CadenceEditor";
+import StopStagesEditor from "./StopStagesEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,28 @@ export default async function ConfigPage() {
 
       <section className="reveal reveal-d2">
         <SectionHeader
+          title="When to stop calling"
+          subtitle="Pick the pipeline stages that mean the lead is done. When the agency moves someone into one of these stages in GoHighLevel, the system stops calling them on the next minute."
+        />
+        <div className="card p-6 md:p-8">
+          <StopStagesEditor initialSelectedStageIds={campaign.stopStageIds} />
+          <div className="mt-8 pt-6 border-t border-[rgb(var(--line))]">
+            <div className="eyebrow mb-2">One-time setup in GoHighLevel</div>
+            <p className="text-[0.93rem] text-[rgb(var(--ink-2))]">
+              In GoHighLevel, create a workflow with the trigger{" "}
+              <em>Opportunity Stage Changed</em> (no stage filter — leave it open). Add a{" "}
+              <em>Webhook</em> action pointing to the Stop URL further down this page, and
+              pass the contact ID plus the new stage as the payload. The system decides
+              whether to actually stop based on the list above — so you only ever wire this
+              workflow up once, no matter how often you change your mind about which stages
+              count as "done".
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="reveal reveal-d3">
+        <SectionHeader
           title="How leads enter the cadence"
           subtitle="Two ways to start a call campaign for a lead — pick whichever fits your team’s workflow."
         />
@@ -96,7 +119,7 @@ export default async function ConfigPage() {
         </div>
       </section>
 
-      <section className="reveal reveal-d3">
+      <section className="reveal reveal-d4">
         <SectionHeader
           title="Webhook addresses"
           subtitle="Paste these into GoHighLevel and Retell if you set up the advanced workflows. The Retell post-call address is set up automatically by the button below."
@@ -108,7 +131,7 @@ export default async function ConfigPage() {
         </div>
       </section>
 
-      <section className="reveal reveal-d4">
+      <section className="reveal reveal-d5">
         <SectionHeader
           title="One-click setup"
           subtitle="Two buttons that make sure GoHighLevel and Retell are wired correctly. Both are safe to run multiple times — they only change what needs changing."
@@ -145,7 +168,7 @@ export default async function ConfigPage() {
         </div>
       </section>
 
-      <section className="reveal reveal-d5">
+      <section className="reveal reveal-d6">
         <SectionHeader
           title="Connections"
           subtitle="Everything this app needs to do its work. Set any missing values as environment variables and redeploy."

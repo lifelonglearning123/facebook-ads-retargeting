@@ -36,6 +36,8 @@ export interface CampaignConfig {
   quietHours: QuietHours;
   spreadHours: boolean;
   cadence: Cadence;
+  /** GHL opportunity stage IDs that should immediately stop the cadence. */
+  stopStageIds: string[];
 }
 
 export interface TemplateMap {
@@ -112,6 +114,7 @@ export const CAMPAIGN: CampaignConfig = {
     // Step 5: final attempt, next business day afternoon (random within window)
     { channel: "voice", rule: "next_business_day", random_between: ["13:00", "17:00"] },
   ],
+  stopStageIds: [],
 };
 
 // Voice-only deployment — templates kept for future use if SMS/email steps
